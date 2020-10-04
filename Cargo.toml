@@ -1,6 +1,6 @@
 [package]
 name = "wasm_thread"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Jurgis Balciunas <chemicstry@gmail.com>"]
 edition = "2018"
 description = "An std thread replacement for wasm32 target"
@@ -9,7 +9,7 @@ repository = "https://github.com/chemicstry/wasm_thread"
 homepage = "https://github.com/chemicstry/wasm_thread"
 documentation = "https://docs.rs/fwasm_thread"
 keywords = ["thread", "wasm", "parallel", "concurrency"]
-categories = ["concurrency", "webassembly"]
+categories = ["concurrency", "wasm"]
 readme = "README.md"
 
 [dependencies]
