@@ -1,10 +1,16 @@
 [package]
 name = "wasm_thread"
 version = "0.1.0"
-authors = ["chemicstry <chemicstry@gmail.com>"]
+authors = ["Jurgis Balciunas <chemicstry@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "An std thread replacement for wasm32 target"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/chemicstry/wasm_thread"
+homepage = "https://github.com/chemicstry/wasm_thread"
+documentation = "https://docs.rs/fwasm_thread"
+keywords = ["thread", "wasm", "parallel", "concurrency"]
+categories = ["concurrency", "webassembly"]
+readme = "README.md"
 
 [dependencies]
 
