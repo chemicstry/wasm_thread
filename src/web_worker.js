@@ -17,7 +17,7 @@ self.onmessage = event => {
         // Rethrow to keep promise rejected and prevent execution of further commands:
         throw err;
     }).then(wasm => {
-        // Enter rust code by calling entry point defined in `wasm_thread.js`.
+        // Enter rust code by calling entry point defined in `lib.rs`.
         // This executes closure defined by work context.
         wasm.wasm_thread_entry_point(work);
 
