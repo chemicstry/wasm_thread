@@ -3,7 +3,7 @@ function script_path() {
     try {
         throw new Error();
     } catch (e) {
-        let parts = e.stack.match(/\((\S+\.js):/);
+        let parts = e.stack.match(/\((\S+):/);
         return parts[1];
     }
 }

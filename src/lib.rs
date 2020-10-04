@@ -196,3 +196,23 @@ where
 {
     Builder::new().spawn(f).expect("failed to spawn thread")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(target_arch = "wasm32")]
+    use wasm_bindgen_test::*;
+
+    #[cfg(target_arch = "wasm32")]
+    wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn test_run_basic() {
+        let (tx, rx) = channel();
+        spawn(move || {
+            tx.send(()).unwrap();
+        });
+        rx.recv().unwrap();
+    }
+}
