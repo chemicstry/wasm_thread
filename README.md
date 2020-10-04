@@ -29,6 +29,30 @@ This crate tries to closely replicate `std::thread` API, however, some features 
 - Web workers are normally spawned by providing a script URL, however, to avoid bundling scripts this library uses URL encoded blob [web_worker.js](src/web_worker.js) to avoid HTTP fetch. `wasm_bindgen` generated `.js` shim script is still needed and a [hack](src/script_path.js) is used to obtain its URL. If this for some reason does not work in your setup, please report an issue or use `Builder::wasm_bindgen_shim_url()` to specify explicit URL.
 - For additional information on wasm threading look at [this](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html) blogpost or [raytrace-parallel](https://rustwasm.github.io/wasm-bindgen/examples/raytrace.html) example.
 
+### Example output
+
+Native:
+```
+hi number 1 from the spawned thread ThreadId(2)!
+hi number 1 from the main thread ThreadId(1)!
+hi number 1 from the spawned thread ThreadId(3)!
+hi number 2 from the main thread ThreadId(1)!
+hi number 2 from the spawned thread ThreadId(2)!
+hi number 2 from the spawned thread ThreadId(3)!
+```
+
+Wasm:
+```
+hi number 1 from the main thread ThreadId(1)!
+hi number 2 from the main thread ThreadId(1)!
+hi number 1 from the spawned thread ThreadId(2)!
+hi number 1 from the spawned thread ThreadId(3)!
+hi number 2 from the spawned thread ThreadId(2)!
+hi number 2 from the spawned thread ThreadId(3)!
+```
+
+As you can see wasm threads are only spawned after `main()` returns, because browser event loop cannot continue while main thread is blocked.
+
 ## License
 
 Licensed under either of

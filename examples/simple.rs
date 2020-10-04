@@ -1,5 +1,9 @@
 use std::time::Duration;
+
+#[cfg(target_arch = "wasm32")]
 use wasm_thread as thread;
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {
