@@ -1,6 +1,6 @@
 [package]
 name = "wasm_thread"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Jurgis Balciunas <chemicstry@gmail.com>"]
 edition = "2018"
 description = "An std thread replacement for wasm32 target"
@@ -13,10 +13,11 @@ categories = ["concurrency", "wasm"]
 readme = "README.md"
 
 [dependencies]
-wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"
-web-sys = { version = "0.3", features = ["Document", "Element", "Window", "Blob", "Url", "WorkerOptions"]}
+web-sys = { version = "0.3", features = ["Blob", "Url", "Worker", "WorkerOptions"]}
 js-sys = "0.3"
+futures = "0.3"
+async-channel = "1.4"
 
 [dev-dependencies]
 log = "0.4"

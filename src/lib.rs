@@ -1,7 +1,8 @@
 use std::any::Any;
 use std::mem;
 use std::panic;
-use std::sync::mpsc::{channel, Receiver};
+use async_channel::Receiver;
+use futures::executor::block_on;
 
 pub use std::thread::{current, sleep, Result, Thread};
 
@@ -111,7 +112,7 @@ impl Builder {
         } = self;
 
         // Channel to return execution result
-        let (sender, receiver) = channel();
+        let (sender, receiver) = async_channel::bounded(1);
 
         // Get worker script as URL encoded blob
         let script = get_worker_script(wasm_bindgen_shim_url);
@@ -128,7 +129,7 @@ impl Builder {
         // Box the main fn closure and send as raw pointer
         let main = Box::new(move || {
             let res = f();
-            sender.send(res).ok();
+            sender.try_send(res).ok();
         });
         let ctx = Box::new(WebWorkerContext {
             func: mem::transmute::<Box<dyn FnOnce() + Send + 'a>, Box<dyn FnOnce() + Send + 'static>>(
@@ -165,9 +166,13 @@ struct JoinInner<T> {
 
 impl<T> JoinInner<T> {
     fn join(&mut self) -> Result<T> {
-        self.receiver
-            .recv()
-            .map_err(|e| Box::new(e) as Box<(dyn Any + Send + 'static)>)
+        let res = block_on(self.receiver.recv());
+        res.map_err(|e| Box::new(e) as Box<(dyn Any + Send + 'static)>)
+    }
+
+    async fn join_async(&mut self) -> Result<T> {
+        let res = self.receiver.recv().await;
+        res.map_err(|e| Box::new(e) as Box<(dyn Any + Send + 'static)>)
     }
 }
 
@@ -184,6 +189,11 @@ impl<T> JoinHandle<T> {
     /// Waits for the associated thread to finish.
     pub fn join(mut self) -> Result<T> {
         self.0.join()
+    }
+
+    /// Waits for the associated thread to finish asynchronously.
+    pub async fn join_async(mut self) -> Result<T> {
+        self.0.join_async().await
     }
 }
 
