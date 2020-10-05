@@ -6,7 +6,9 @@
 
 An `std::thread` replacement for wasm32 target.
 
-This crate tries to closely replicate `std::thread` API, however, some features are not yet implemented or are even impossible to implement.
+This crate tries to closely replicate `std::thread` API. Namely, it doesn't require you to bundle worker scripts and resolves wasm-bindgen shim URL automatically.
+
+Note that some API is still missing and may be even impossible to implement given wasm limitations.
 
 ## Running examples
 
