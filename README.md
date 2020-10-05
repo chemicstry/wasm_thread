@@ -1,5 +1,9 @@
 # wasm_thread
 
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](https://github.com/chemicstry/wasm_thread)
+[![Cargo](https://img.shields.io/crates/v/wasm_thread.svg)](https://crates.io/crates/wasm_thread)
+[![Documentation](https://docs.rs/wasm_thread/badge.svg)](https://docs.rs/wasm_thread)
+
 An `std::thread` replacement for wasm32 target.
 
 This crate tries to closely replicate `std::thread` API, however, some features are not yet implemented or are even impossible to implement.
