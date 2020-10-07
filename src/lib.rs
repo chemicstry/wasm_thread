@@ -99,6 +99,18 @@ impl Builder {
 
     /// Spawns a new thread without any lifetime restrictions by taking ownership
     /// of the `Builder`, and returns an [`io::Result`] to its [`JoinHandle`].
+    ///
+    /// # Safety
+    ///
+    /// The caller has to ensure that no references in the supplied thread closure
+    /// or its return type can outlive the spawned thread's lifetime. This can be
+    /// guaranteed in two ways:
+    ///
+    /// - ensure that [`join`][`JoinHandle::join`] is called before any referenced
+    /// data is dropped
+    /// - use only types with `'static` lifetime bounds, i.e., those with no or only
+    /// `'static` references (both [`Builder::spawn`]
+    /// and [`spawn`] enforce this property statically)
     pub unsafe fn spawn_unchecked<'a, F, T>(self, f: F) -> std::io::Result<JoinHandle<T>>
     where
         F: FnOnce() -> T,
