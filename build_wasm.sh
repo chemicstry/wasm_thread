@@ -12,8 +12,7 @@ set -ex
 #   features enabled, ensuring that LLVM will generate atomic instructions,
 #   shared memory, passive segments, etc.
 
-RUSTFLAGS='-C target-feature=+atomics,+bulk-memory' \
-  cargo build --example simple --target wasm32-unknown-unknown --release -Z build-std=std,panic_abort
+cargo +nightly build --example simple --release
 
 # Note the usage of `--target no-modules` here which is required for passing
 # the memory import to each wasm module.
