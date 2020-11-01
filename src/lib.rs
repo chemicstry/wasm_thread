@@ -26,7 +26,7 @@ pub fn get_wasm_bindgen_shim_script_path() -> String {
 pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
     // If wasm bindgen shim url is not provided, try to obtain one automatically
     let wasm_bindgen_shim_url =
-        wasm_bindgen_shim_url.unwrap_or_else(|| get_wasm_bindgen_shim_script_path());
+        wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
 
     // Generate script from template
     let template = include_str!("web_worker.js");
@@ -47,7 +47,7 @@ pub fn wasm_thread_entry_point(ptr: u32) {
 }
 
 /// Thread factory, which can be used in order to configure the properties of a new thread.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Builder {
     // A name for the thread-to-be, for identification in panic messages
     name: Option<String>,
@@ -61,11 +61,7 @@ impl Builder {
     /// Generates the base configuration for spawning a thread, from which
     /// configuration methods can be chained.
     pub fn new() -> Builder {
-        Builder {
-            name: None,
-            stack_size: None,
-            wasm_bindgen_shim_url: None,
-        }
+        Builder::default()
     }
 
     /// Names the thread-to-be.
