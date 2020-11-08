@@ -1,8 +1,9 @@
-use std::any::Any;
-use std::mem;
-use std::panic;
 use async_channel::Receiver;
 use futures::executor::block_on;
+use std::any::Any;
+use std::fmt;
+use std::mem;
+use std::panic;
 
 pub use std::thread::{current, sleep, Result, Thread};
 
@@ -202,6 +203,12 @@ impl<T> JoinHandle<T> {
     /// Waits for the associated thread to finish asynchronously.
     pub async fn join_async(mut self) -> Result<T> {
         self.0.join_async().await
+    }
+}
+
+impl<T> fmt::Debug for JoinHandle<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad("JoinHandle { .. }")
     }
 }
 
