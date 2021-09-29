@@ -1,3 +1,7 @@
+## Outdated
+
+This library is outaded with [breaking changes in latest rust](https://github.com/rustwasm/wasm-bindgen/issues/2487) and currently does not build. Recommended alternative is [wasm-bindgen-rayon](https://github.com/GoogleChromeLabs/wasm-bindgen-rayon), which supersedes this library.
+
 # wasm_thread
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](https://github.com/chemicstry/wasm_thread)
