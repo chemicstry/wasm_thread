@@ -1,18 +1,25 @@
 use async_channel::Receiver;
 use futures::executor::block_on;
 use std::any::Any;
+use std::collections::VecDeque;
 use std::fmt;
 use std::mem;
 use std::panic;
 
-pub use std::thread::{current, sleep, Result, Thread};
+pub use std::thread::{current, sleep, Result, Thread, ThreadId};
 
 use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsValue;
-use web_sys::{Blob, Url, Worker, WorkerOptions};
+use wasm_bindgen::*;
+use web_sys::{Blob, DedicatedWorkerGlobalScope, MessageEvent, Url, Worker, WorkerType, WorkerOptions};
 
 struct WebWorkerContext {
     func: Box<dyn FnOnce() + Send>,
+}
+
+#[cfg(feature = "es_modules")]
+extern "C" {
+    #[wasm_bindgen(module = "/src/module_workers_polyfill.min.js")]
+    fn load_module_workers_polyfill();
 }
 
 /// Extracts path of the `wasm_bindgen` generated .js shim script
@@ -45,6 +52,20 @@ pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
 pub fn wasm_thread_entry_point(ptr: u32) {
     let ctx = unsafe { Box::from_raw(ptr as *mut WebWorkerContext) };
     (ctx.func)();
+}
+
+static mut MAIN_THREAD_ID: Option<ThreadId> = None;
+static mut BUILDER_REQUESTS: Option<std::sync::Mutex<VecDeque<BuilderRequest>>> = None;
+
+struct BuilderRequest {
+    builder: Builder,
+    context: WebWorkerContext
+}
+
+impl BuilderRequest {
+    pub unsafe fn spawn(self) {
+        self.builder.spawn_for_context(self.context);
+    }
 }
 
 /// Thread factory, which can be used in order to configure the properties of a new thread.
@@ -114,6 +135,40 @@ impl Builder {
         F: Send + 'a,
         T: Send + 'a,
     {
+        let (sender, receiver) = async_channel::bounded(1);
+        
+        let main = Box::new(move || {
+            let res = f();
+            sender.try_send(res).ok();
+        });
+        let context = WebWorkerContext {
+            func: mem::transmute::<Box<dyn FnOnce() + Send + 'a>, Box<dyn FnOnce() + Send + 'static>>(
+                main,
+            ),
+        };
+
+        if MAIN_THREAD_ID.is_none() {
+            MAIN_THREAD_ID = Some(current().id());
+            BUILDER_REQUESTS = Some(std::sync::Mutex::new(VecDeque::new()));
+        }
+        
+        if MAIN_THREAD_ID.unwrap_unchecked() == current().id() {
+            self.spawn_for_context(context);
+        }
+        else {
+            BUILDER_REQUESTS.as_ref().unwrap_unchecked().lock().unwrap().push_back(BuilderRequest { builder: self, context });
+            js_sys::eval("self").unwrap().dyn_into::<DedicatedWorkerGlobalScope>().unwrap().post_message(&JsValue::NULL);
+        }
+
+        Ok(JoinHandle(JoinInner { receiver }))
+    }
+
+    pub unsafe fn spawn_unchecked2<'a, F, T>(self, f: F) -> std::io::Result<JoinHandle<T>>
+    where
+        F: FnOnce() -> T,
+        F: Send + 'a,
+        T: Send + 'a,
+    {
         let Builder {
             name,
             wasm_bindgen_shim_url,
@@ -164,6 +219,65 @@ impl Builder {
         .unwrap();
 
         Ok(JoinHandle(JoinInner { receiver }))
+    }
+
+    unsafe fn spawn_for_context(self, ctx: WebWorkerContext) {
+        let Builder {
+            name,
+            wasm_bindgen_shim_url,
+            ..
+        } = self;
+
+        // Get worker script as URL encoded blob
+        let script = get_worker_script(wasm_bindgen_shim_url);
+
+        // Todo: figure out how to set stack size
+        let mut options = WorkerOptions::new();
+        if let Some(name) = name {
+            options.name(&name);
+        }
+        #[cfg(feature = "es_modules")] {
+            load_module_workers_polyfill();
+            options.type_(WorkerType::Module);
+        }
+        #[cfg(not(feature = "es_modules"))] {
+            options.type_(WorkerType::Classic);
+        }
+
+        // Spawn the worker
+        let worker = Worker::new_with_options(script.as_str(), &options).unwrap();
+        let callback = Closure::wrap(Box::new(move |_: &web_sys::MessageEvent| {
+            loop {
+                match &mut BUILDER_REQUESTS.as_ref().unwrap_unchecked().try_lock() {
+                    Ok(x) => {
+                        x.pop_front().unwrap().spawn();
+                        return;
+                    },
+                    Err(std::sync::TryLockError::WouldBlock) => {},
+                    Err(std::sync::TryLockError::Poisoned(x)) => Err(x).unwrap()
+                }
+            }
+        }) as Box<dyn FnMut(&web_sys::MessageEvent)>);
+        worker.set_onmessage(Some(callback.as_ref().unchecked_ref()));
+        callback.forget();
+
+        let ctx_ptr = Box::into_raw(Box::new(ctx));
+
+        // Pack shared wasm (module and memory) and work as a single JS array
+        let init = js_sys::Array::new();
+        init.push(&wasm_bindgen::module());
+        init.push(&wasm_bindgen::memory());
+        init.push(&JsValue::from(ctx_ptr as u32));
+
+        // Send initialization message
+        match worker.post_message(&init) {
+            Ok(()) => Ok(worker),
+            Err(e) => {
+                drop(Box::from_raw(ctx_ptr));
+                Err(e)
+            }
+        }
+        .unwrap();
     }
 }
 
