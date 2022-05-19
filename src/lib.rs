@@ -169,64 +169,6 @@ impl Builder {
         Ok(JoinHandle(JoinInner { receiver }))
     }
 
-    pub unsafe fn spawn_unchecked2<'a, F, T>(self, f: F) -> std::io::Result<JoinHandle<T>>
-    where
-        F: FnOnce() -> T,
-        F: Send + 'a,
-        T: Send + 'a,
-    {
-        let Builder {
-            name,
-            wasm_bindgen_shim_url,
-            ..
-        } = self;
-
-        // Channel to return execution result
-        let (sender, receiver) = async_channel::bounded(1);
-
-        // Get worker script as URL encoded blob
-        let script = get_worker_script(wasm_bindgen_shim_url);
-
-        // Todo: figure out how to set stack size
-        let mut options = WorkerOptions::new();
-        if let Some(name) = name {
-            options.name(&name);
-        }
-
-        // Spawn the worker
-        let worker = Worker::new_with_options(script.as_str(), &options).unwrap();
-
-        // Box the main fn closure and send as raw pointer
-        let main = Box::new(move || {
-            let res = f();
-            sender.try_send(res).ok();
-        });
-        let ctx = Box::new(WebWorkerContext {
-            func: mem::transmute::<Box<dyn FnOnce() + Send + 'a>, Box<dyn FnOnce() + Send + 'static>>(
-                main,
-            ),
-        });
-        let ctx_ptr = Box::into_raw(ctx);
-
-        // Pack shared wasm (module and memory) and work as a single JS array
-        let init = js_sys::Array::new();
-        init.push(&wasm_bindgen::module());
-        init.push(&wasm_bindgen::memory());
-        init.push(&JsValue::from(ctx_ptr as u32));
-
-        // Send initialization message
-        match worker.post_message(&init) {
-            Ok(()) => Ok(worker),
-            Err(e) => {
-                drop(Box::from_raw(ctx_ptr));
-                Err(e)
-            }
-        }
-        .unwrap();
-
-        Ok(JoinHandle(JoinInner { receiver }))
-    }
-
     unsafe fn spawn_for_context(self, ctx: WebWorkerContext) {
         let Builder {
             name,
