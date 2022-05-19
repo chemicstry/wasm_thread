@@ -17,8 +17,8 @@ struct WebWorkerContext {
 }
 
 #[cfg(feature = "es_modules")]
+#[wasm_bindgen(module = "/src/module_workers_polyfill.min.js")]
 extern "C" {
-    #[wasm_bindgen(module = "/src/module_workers_polyfill.min.js")]
     fn load_module_workers_polyfill();
 }
 
