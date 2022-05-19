@@ -37,14 +37,20 @@ pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
         wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
 
     // Generate script from template
-    let template = include_str!("web_worker.js");
+    let template;
+    #[cfg(feature = "es_modules")] {
+        template = include_str!("web_worker_module.js");
+    }
+    #[cfg(not(feature = "es_modules"))] {
+        template = include_str!("web_worker.js");
+    }
     let script = template.replace("WASM_BINDGEN_SHIM_URL", &wasm_bindgen_shim_url);
 
     // Crtae url encoded blob
     let arr = js_sys::Array::new();
     arr.set(0, JsValue::from_str(&script));
     let blob = Blob::new_with_str_sequence(&arr).unwrap();
-    Url::create_object_url_with_blob(&blob).unwrap()
+    Url::create_object_url_with_blob(&blob.slice_with_f64_and_f64_and_content_type(0.0, blob.size(), "text/javascript").unwrap()).unwrap()
 }
 
 /// Entry point for web workers
