@@ -1,7 +1,3 @@
-## Outdated
-
-This library is outaded with [breaking changes in latest rust](https://github.com/rustwasm/wasm-bindgen/issues/2487) and currently does not build. Recommended alternative is [wasm-bindgen-rayon](https://github.com/GoogleChromeLabs/wasm-bindgen-rayon), which supersedes this library.
-
 # wasm_thread
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](https://github.com/chemicstry/wasm_thread)
@@ -14,6 +10,25 @@ This crate tries to closely replicate `std::thread` API. Namely, it doesn't requ
 
 Note that some API is still missing and may be even impossible to implement given wasm limitations.
 
+## Using as a library
+
+- Add `wasm_thread` to your `Cargo.toml`.
+- This project supports `wasm-pack` targets `web` and `no-modules`. If building for `web`, enable the crate feature `es_modules`. Otherwise, this package will target `no-modules` by default.
+- Replace `use std::thread` with `use wasm_thread as thread`. Note that some API might be missing.
+- Build normally using `wasm-pack` or adapt [build_wasm.sh](build_wasm.sh) to your project.
+
+## Notes on wasm limitations
+
+- In order for multiple wasm instances to share the same memory, `SharedArrayBuffer` is required. This means that the COOP and COEP security headers for the webpage will need to be set (see [Mozilla's documentation](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer)).
+- Any blocking API (`thread.join()`, `futures::block_on()`, etc) on the main thread will freeze the browser for as long as lock is maintained. This also freezes any proxied functions, which means that worker spawning, network fetches and other similar asynchronous APIs will block also and can cause a deadlock. To avoid this, either run your `main()` in a worker thread or use async futures.
+- Atomic locks (`i32.atomic.wait` to be specific) will panic on the main thread. This means that `mutex.lock()` will likely crash. Solution is the same as above.
+- Web workers are normally spawned by providing a script URL, however, to avoid bundling scripts this library uses URL encoded blob [web_worker.js](src/web_worker.js) to avoid HTTP fetch. `wasm_bindgen` generated `.js` shim script is still needed and a [hack](src/script_path.js) is used to obtain its URL. If this for some reason does not work in your setup, please report an issue or use `Builder::wasm_bindgen_shim_url()` to specify explicit URL.
+- For additional information on wasm threading look at [this](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html) blogpost or [raytrace-parallel](https://rustwasm.github.io/wasm-bindgen/examples/raytrace.html) example.
+
+## Alternatives
+
+For a higher-level threading solution, see [wasm-bindgen-rayon](https://github.com/GoogleChromeLabs/wasm-bindgen-rayon), which allows one to utilize a fixed-size threadpool in web browsers. 
+
 ## Running examples
 
 ### Native
@@ -24,20 +39,6 @@ Note that some API is still missing and may be even impossible to implement give
 
 - Build with `./build_wasm.sh` or copy paste commands from the script if your environment does not support shell scripts. This custom build step is required because prebuilt standard library does not have support for atomics yet. Read more about this [here](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html).
 - Serve `examples` directory over HTTP and open `simple.html` in browser. Inspect console output. You can use `cargo install basic-http-server` and `basic-http-server examples`.
-
-## Using as a library
-
-- Add `wasm_thread` to your `Cargo.toml`.
-- Replace `use std::thread` with `use wasm_thread as thread`. Note that some API might be missing.
-- Adapt [build_wasm.sh](build_wasm.sh) to your project. Currently only `--no-modules` target is supported.
-
-## Notes on wasm limitations
-
-- Any blocking API (`thread.join()`, `futures::block_on()`, etc) on the main thread will freeze the browser for as long as lock is maintained. This also freezes any proxied functions, which means that worker spawning, network fetches and other similar asynchronous APIs will block also and can cause a deadlock. To avoid this, either run your `main()` in a worker thread or use async futures.
-- Atomic locks (`i32.atomic.wait` to be specific) will panic on the main thread. This means that `mutex.lock()` will likely crash. Solution is the same as above.
-- Only `no-modules` target is supported by `wasm_bindgen`. This will be lifted once browsers support modules in web workers.
-- Web workers are normally spawned by providing a script URL, however, to avoid bundling scripts this library uses URL encoded blob [web_worker.js](src/web_worker.js) to avoid HTTP fetch. `wasm_bindgen` generated `.js` shim script is still needed and a [hack](src/script_path.js) is used to obtain its URL. If this for some reason does not work in your setup, please report an issue or use `Builder::wasm_bindgen_shim_url()` to specify explicit URL.
-- For additional information on wasm threading look at [this](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html) blogpost or [raytrace-parallel](https://rustwasm.github.io/wasm-bindgen/examples/raytrace.html) example.
 
 ### Example output
 
