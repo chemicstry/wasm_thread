@@ -1,0 +1,13 @@
+<html>
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <script src="./target/simple.js"></script>
+    <script type="text/javascript">
+      wasm_bindgen('./target/simple_bg.wasm').then((wasm) => {
+        wasm.run();
+      });
+    </script>
+  </body>
+</html>
