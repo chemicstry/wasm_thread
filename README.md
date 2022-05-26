@@ -19,7 +19,7 @@ Note that some API is still missing and may be even impossible to implement give
 
 ## Notes on wasm limitations
 
-- In order for multiple wasm instances to share the same memory, `SharedArrayBuffer` is required. This means that the COOP and COEP security headers for the webpage will need to be set (see [Mozilla's documentation](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer)).
+- In order for multiple wasm instances to share the same memory, `SharedArrayBuffer` is required. This means that the COOP and COEP security headers for the webpage will need to be set (see [Mozilla's documentation](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer)). These may be enabled by adjusting webserver settings or using a [service worker](https://github.com/gzuidhof/coi-serviceworker).
 - Any blocking API (`thread.join()`, `futures::block_on()`, etc) on the main thread will freeze the browser for as long as lock is maintained. This also freezes any proxied functions, which means that worker spawning, network fetches and other similar asynchronous APIs will block also and can cause a deadlock. To avoid this, either run your `main()` in a worker thread or use async futures.
 - Atomic locks (`i32.atomic.wait` to be specific) will panic on the main thread. This means that `mutex.lock()` will likely crash. Solution is the same as above.
 - Web workers are normally spawned by providing a script URL, however, to avoid bundling scripts this library uses URL encoded blob [web_worker.js](src/web_worker.js) to avoid HTTP fetch. `wasm_bindgen` generated `.js` shim script is still needed and a [hack](src/script_path.js) is used to obtain its URL. If this for some reason does not work in your setup, please report an issue or use `Builder::wasm_bindgen_shim_url()` to specify explicit URL.
@@ -31,14 +31,21 @@ For a higher-level threading solution, see [wasm-bindgen-rayon](https://github.c
 
 ## Running examples
 
-### Native
+### Simple
+
+#### Native
 
 - Just `cargo run --example simple`
 
-### wasm32
+#### wasm32
 
 - Build with `./build_wasm.sh` or copy paste commands from the script if your environment does not support shell scripts. This custom build step is required because prebuilt standard library does not have support for atomics yet. Read more about this [here](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html).
 - Serve `examples` directory over HTTP and open `simple.html` in browser. Inspect console output. You can use `cargo install basic-http-server` and `basic-http-server examples`.
+
+### wasm-pack
+
+- Build with `./examples/wasm-pack/web-build.ps1` for an example targeting `web`, and `./examples/wasm-pack/web-build-no-module.ps1` for an example targeting `no-modules`.
+- Serve `./examples/wasm-pack/module` or `./examples/wasm-pack/no-module`, respectively, over HTTP and open `simple.html` in browser. Inspect console output. You can use `cargo install basic-http-server` and `basic-http-server examples`.
 
 ### Example output
 
