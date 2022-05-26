@@ -32,25 +32,37 @@ pub fn get_wasm_bindgen_shim_script_path() -> String {
 
 /// Generates worker entry script as URL encoded blob
 pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
-    // If wasm bindgen shim url is not provided, try to obtain one automatically
-    let wasm_bindgen_shim_url =
-        wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
+    unsafe {
+        static mut SCRIPT_URL: Option<String> = None;
 
-    // Generate script from template
-    let template;
-    #[cfg(feature = "es_modules")] {
-        template = include_str!("web_worker_module.js");
-    }
-    #[cfg(not(feature = "es_modules"))] {
-        template = include_str!("web_worker.js");
-    }
-    let script = template.replace("WASM_BINDGEN_SHIM_URL", &wasm_bindgen_shim_url);
+        if let Some(url) = SCRIPT_URL.as_ref() {
+            url.clone()
+        }
+        else {
+            // If wasm bindgen shim url is not provided, try to obtain one automatically
+            let wasm_bindgen_shim_url =
+                wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
 
-    // Crtae url encoded blob
-    let arr = js_sys::Array::new();
-    arr.set(0, JsValue::from_str(&script));
-    let blob = Blob::new_with_str_sequence(&arr).unwrap();
-    Url::create_object_url_with_blob(&blob.slice_with_f64_and_f64_and_content_type(0.0, blob.size(), "text/javascript").unwrap()).unwrap()
+            // Generate script from template
+            let template;
+            #[cfg(feature = "es_modules")] {
+                template = include_str!("web_worker_module.js");
+            }
+            #[cfg(not(feature = "es_modules"))] {
+                template = include_str!("web_worker.js");
+            }
+            let script = template.replace("WASM_BINDGEN_SHIM_URL", &wasm_bindgen_shim_url);
+
+            // Crtae url encoded blob
+            let arr = js_sys::Array::new();
+            arr.set(0, JsValue::from_str(&script));
+            let blob = Blob::new_with_str_sequence(&arr).unwrap();
+            let url = Url::create_object_url_with_blob(&blob.slice_with_f64_and_f64_and_content_type(0.0, blob.size(), "text/javascript").unwrap()).unwrap();
+            SCRIPT_URL = Some(url.clone());
+
+            url
+        }
+    }
 }
 
 /// Entry point for web workers
@@ -58,10 +70,10 @@ pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
 pub fn wasm_thread_entry_point(ptr: u32) {
     let ctx = unsafe { Box::from_raw(ptr as *mut WebWorkerContext) };
     (ctx.func)();
+    WorkerMessage::ThreadComplete.post();
 }
 
 static mut MAIN_THREAD_ID: Option<ThreadId> = None;
-static mut BUILDER_REQUESTS: Option<std::sync::Mutex<VecDeque<BuilderRequest>>> = None;
 
 struct BuilderRequest {
     builder: Builder,
@@ -71,6 +83,18 @@ struct BuilderRequest {
 impl BuilderRequest {
     pub unsafe fn spawn(self) {
         self.builder.spawn_for_context(self.context);
+    }
+}
+
+enum WorkerMessage {
+    SpawnThread(BuilderRequest),
+    ThreadComplete
+}
+
+impl WorkerMessage {
+    pub fn post(self) {
+        let req = Box::new(self);
+        unsafe { js_sys::eval("self").unwrap().dyn_into::<DedicatedWorkerGlobalScope>().unwrap().post_message(&JsValue::from(std::mem::transmute::<_, f64>(Box::into_raw(req) as u64))); }
     }
 }
 
@@ -155,15 +179,13 @@ impl Builder {
 
         if MAIN_THREAD_ID.is_none() {
             MAIN_THREAD_ID = Some(current().id());
-            BUILDER_REQUESTS = Some(std::sync::Mutex::new(VecDeque::new()));
         }
         
         if MAIN_THREAD_ID.unwrap_unchecked() == current().id() {
             self.spawn_for_context(context);
         }
         else {
-            BUILDER_REQUESTS.as_ref().unwrap_unchecked().lock().unwrap().push_back(BuilderRequest { builder: self, context });
-            js_sys::eval("self").unwrap().dyn_into::<DedicatedWorkerGlobalScope>().unwrap().post_message(&JsValue::NULL);
+            WorkerMessage::SpawnThread(BuilderRequest { builder: self, context }).post();
         }
 
         Ok(JoinHandle(JoinInner { receiver }))
@@ -194,17 +216,18 @@ impl Builder {
 
         // Spawn the worker
         let worker = Worker::new_with_options(script.as_str(), &options).unwrap();
-        let callback = Closure::wrap(Box::new(move |_: &web_sys::MessageEvent| {
-            loop {
-                match &mut BUILDER_REQUESTS.as_ref().unwrap_unchecked().try_lock() {
-                    Ok(x) => {
-                        x.pop_front().unwrap().spawn();
-                        return;
-                    },
-                    Err(std::sync::TryLockError::WouldBlock) => {},
-                    Err(std::sync::TryLockError::Poisoned(x)) => Err(x).unwrap()
+        let worker_reference = std::rc::Rc::new(std::cell::Cell::new(None));
+        let worker_reference_callback = worker_reference.clone();
+        let callback = Closure::wrap(Box::new(move |x: &web_sys::MessageEvent| {
+            let req = Box::from_raw(std::mem::transmute::<_, u64>(x.data().as_f64().unwrap()) as *mut WorkerMessage);
+            match *req {
+                WorkerMessage::SpawnThread(builder) => {
+                    builder.spawn();
+                },
+                WorkerMessage::ThreadComplete => {
+                    worker_reference.replace(None);
                 }
-            }
+            };
         }) as Box<dyn FnMut(&web_sys::MessageEvent)>);
         worker.set_onmessage(Some(callback.as_ref().unchecked_ref()));
         callback.forget();
@@ -219,13 +242,15 @@ impl Builder {
 
         // Send initialization message
         match worker.post_message(&init) {
-            Ok(()) => Ok(worker),
+            Ok(()) => Ok(worker.clone()),
             Err(e) => {
                 drop(Box::from_raw(ctx_ptr));
                 Err(e)
             }
         }
         .unwrap();
+
+        worker_reference_callback.set(Some(worker));
     }
 }
 
