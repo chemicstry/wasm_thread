@@ -241,16 +241,13 @@ impl Builder {
         init.push(&JsValue::from(ctx_ptr as u32));
 
         // Send initialization message
-        match worker.post_message(&init) {
-            Ok(()) => Ok(worker.clone()),
+        worker_reference_callback.set(Some(match worker.post_message(&init) {
+            Ok(()) => Ok(worker),
             Err(e) => {
                 drop(Box::from_raw(ctx_ptr));
                 Err(e)
             }
-        }
-        .unwrap();
-
-        worker_reference_callback.set(Some(worker));
+        }.unwrap()));
     }
 }
 
