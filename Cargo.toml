@@ -12,9 +12,12 @@ keywords = ["thread", "wasm", "parallel", "concurrency"]
 categories = ["concurrency", "wasm"]
 readme = "README.md"
 
+[features]
+es_modules = []
+
 [dependencies]
 wasm-bindgen = "0.2"
-web-sys = { version = "0.3", features = ["Blob", "Url", "Worker", "WorkerOptions"]}
+web-sys = { version = "0.3", features = ["Blob", "DedicatedWorkerGlobalScope", "MessageEvent", "Url", "Worker", "WorkerType", "WorkerOptions"]}
 js-sys = "0.3"
 futures = "0.3"
 async-channel = "1.4"
