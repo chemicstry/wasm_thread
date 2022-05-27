@@ -8,7 +8,7 @@ pub use std::thread::{current, sleep, Result, Thread, ThreadId};
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::*;
-use web_sys::{Blob, DedicatedWorkerGlobalScope, Url, Worker, WorkerType, WorkerOptions};
+use web_sys::{Blob, DedicatedWorkerGlobalScope, Url, Worker, WorkerOptions, WorkerType};
 
 struct WebWorkerContext {
     func: Box<dyn FnOnce() + Send>,
@@ -35,27 +35,33 @@ pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
 
         if let Some(url) = SCRIPT_URL.as_ref() {
             url.clone()
-        }
-        else {
+        } else {
             // If wasm bindgen shim url is not provided, try to obtain one automatically
             let wasm_bindgen_shim_url =
                 wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
 
             // Generate script from template
             let template;
-            #[cfg(feature = "es_modules")] {
+            #[cfg(feature = "es_modules")]
+            {
                 template = include_str!("web_worker_module.js");
             }
-            #[cfg(not(feature = "es_modules"))] {
+            #[cfg(not(feature = "es_modules"))]
+            {
                 template = include_str!("web_worker.js");
             }
             let script = template.replace("WASM_BINDGEN_SHIM_URL", &wasm_bindgen_shim_url);
 
-            // Crtae url encoded blob
+            // Create url encoded blob
             let arr = js_sys::Array::new();
             arr.set(0, JsValue::from_str(&script));
             let blob = Blob::new_with_str_sequence(&arr).unwrap();
-            let url = Url::create_object_url_with_blob(&blob.slice_with_f64_and_f64_and_content_type(0.0, blob.size(), "text/javascript").unwrap()).unwrap();
+            let url = Url::create_object_url_with_blob(
+                &blob
+                    .slice_with_f64_and_f64_and_content_type(0.0, blob.size(), "text/javascript")
+                    .unwrap(),
+            )
+            .unwrap();
             SCRIPT_URL = Some(url.clone());
 
             url
@@ -75,7 +81,7 @@ static mut MAIN_THREAD_ID: Option<ThreadId> = None;
 
 struct BuilderRequest {
     builder: Builder,
-    context: WebWorkerContext
+    context: WebWorkerContext,
 }
 
 impl BuilderRequest {
@@ -86,13 +92,22 @@ impl BuilderRequest {
 
 enum WorkerMessage {
     SpawnThread(BuilderRequest),
-    ThreadComplete
+    ThreadComplete,
 }
 
 impl WorkerMessage {
     pub fn post(self) {
         let req = Box::new(self);
-        unsafe { js_sys::eval("self").unwrap().dyn_into::<DedicatedWorkerGlobalScope>().unwrap().post_message(&JsValue::from(std::mem::transmute::<_, f64>(Box::into_raw(req) as u64))).unwrap(); }
+        unsafe {
+            js_sys::eval("self")
+                .unwrap()
+                .dyn_into::<DedicatedWorkerGlobalScope>()
+                .unwrap()
+                .post_message(&JsValue::from(std::mem::transmute::<_, f64>(
+                    Box::into_raw(req) as u64,
+                )))
+                .unwrap();
+        }
     }
 }
 
@@ -164,7 +179,7 @@ impl Builder {
         T: Send + 'a,
     {
         let (sender, receiver) = async_channel::bounded(1);
-        
+
         let main = Box::new(move || {
             let res = f();
             sender.try_send(res).ok();
@@ -178,12 +193,15 @@ impl Builder {
         if MAIN_THREAD_ID.is_none() {
             MAIN_THREAD_ID = Some(current().id());
         }
-        
+
         if MAIN_THREAD_ID.unwrap_unchecked() == current().id() {
             self.spawn_for_context(context);
-        }
-        else {
-            WorkerMessage::SpawnThread(BuilderRequest { builder: self, context }).post();
+        } else {
+            WorkerMessage::SpawnThread(BuilderRequest {
+                builder: self,
+                context,
+            })
+            .post();
         }
 
         Ok(JoinHandle(JoinInner { receiver }))
@@ -204,11 +222,13 @@ impl Builder {
         if let Some(name) = name {
             options.name(&name);
         }
-        #[cfg(feature = "es_modules")] {
+        #[cfg(feature = "es_modules")]
+        {
             load_module_workers_polyfill();
             options.type_(WorkerType::Module);
         }
-        #[cfg(not(feature = "es_modules"))] {
+        #[cfg(not(feature = "es_modules"))]
+        {
             options.type_(WorkerType::Classic);
         }
 
@@ -217,11 +237,13 @@ impl Builder {
         let worker_reference = std::rc::Rc::new(std::cell::Cell::new(None));
         let worker_reference_callback = worker_reference.clone();
         let callback = Closure::wrap(Box::new(move |x: &web_sys::MessageEvent| {
-            let req = Box::from_raw(std::mem::transmute::<_, u64>(x.data().as_f64().unwrap()) as *mut WorkerMessage);
+            let req = Box::from_raw(
+                std::mem::transmute::<_, u64>(x.data().as_f64().unwrap()) as *mut WorkerMessage
+            );
             match *req {
                 WorkerMessage::SpawnThread(builder) => {
                     builder.spawn();
-                },
+                }
                 WorkerMessage::ThreadComplete => {
                     worker_reference.replace(None);
                 }
@@ -239,13 +261,16 @@ impl Builder {
         init.push(&JsValue::from(ctx_ptr as u32));
 
         // Send initialization message
-        worker_reference_callback.set(Some(match worker.post_message(&init) {
-            Ok(()) => Ok(worker),
-            Err(e) => {
-                drop(Box::from_raw(ctx_ptr));
-                Err(e)
+        worker_reference_callback.set(Some(
+            match worker.post_message(&init) {
+                Ok(()) => Ok(worker),
+                Err(e) => {
+                    drop(Box::from_raw(ctx_ptr));
+                    Err(e)
+                }
             }
-        }.unwrap()));
+            .unwrap(),
+        ));
     }
 }
 
