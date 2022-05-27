@@ -37,15 +37,15 @@ For a higher-level threading solution, see [wasm-bindgen-rayon](https://github.c
 
 - Just `cargo run --example simple`
 
-#### wasm32
+#### wasm-bindgen
 
-- Build with `./build_wasm.sh` or copy paste commands from the script if your environment does not support shell scripts. This custom build step is required because prebuilt standard library does not have support for atomics yet. Read more about this [here](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html).
-- Serve `examples` directory over HTTP and open `simple.html` in browser. Inspect console output. You can use `cargo install basic-http-server` and `basic-http-server examples`.
+- Build with `./build_wasm.sh` (bash) or `./build_wasm.ps1` (PowerShell). This custom build step is required because prebuilt standard library does not have support for atomics yet. Read more about this [here](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html).
+- Serve `examples` directory over HTTP with cross-origin isolation enabled and open `simple.html` in the browser. Inspect console output. You can use `cargo install sfz` as a basic HTTP server and serve with `sfz examples --coi`.
 
-### wasm-pack
+#### wasm-pack
 
-- Build with `./examples/wasm-pack/web-build.ps1` for an example targeting `web`, and `./examples/wasm-pack/web-build-no-module.ps1` for an example targeting `no-modules`.
-- Serve `./examples/wasm-pack/module` or `./examples/wasm-pack/no-module`, respectively, over HTTP and open `simple.html` in browser. Inspect console output. You can use `cargo install basic-http-server` and `basic-http-server examples`.
+- Build with `./examples-wasm-pack/web-build.sh` for an example targeting `web`, and `./examples/wasm-pack/web-build-no-module.sh` for an example targeting `no-modules`.
+- Serve `./examples-wasm-pack/module` or `./examples-wasm-pack/no-module`, respectively, over HTTP and open `simple.html` in browser. Inspect console output.
 
 ### Example output
 
