@@ -1,4 +1,5 @@
 /target
 Cargo.lock
 /examples/target
+/examples-wasm-pack/target
 .vscode/
