@@ -1,8 +1,8 @@
 [build]
-
 target = "wasm32-unknown-unknown"
+
 [target.'cfg(target_arch = "wasm32")']
-rustflags = ["--cfg=web_sys_unstable_apis", "-C", "embed-bitcode=yes", "-C", "target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals"]
+rustflags = ["-C", "target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals"]
 
 [unstable]
 build-std = ["panic_abort", "std"]
