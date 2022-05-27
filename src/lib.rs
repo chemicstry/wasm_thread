@@ -1,16 +1,14 @@
 use async_channel::Receiver;
 use futures::executor::block_on;
 use std::any::Any;
-use std::collections::VecDeque;
 use std::fmt;
 use std::mem;
-use std::panic;
 
 pub use std::thread::{current, sleep, Result, Thread, ThreadId};
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::*;
-use web_sys::{Blob, DedicatedWorkerGlobalScope, MessageEvent, Url, Worker, WorkerType, WorkerOptions};
+use web_sys::{Blob, DedicatedWorkerGlobalScope, Url, Worker, WorkerType, WorkerOptions};
 
 struct WebWorkerContext {
     func: Box<dyn FnOnce() + Send>,
@@ -94,7 +92,7 @@ enum WorkerMessage {
 impl WorkerMessage {
     pub fn post(self) {
         let req = Box::new(self);
-        unsafe { js_sys::eval("self").unwrap().dyn_into::<DedicatedWorkerGlobalScope>().unwrap().post_message(&JsValue::from(std::mem::transmute::<_, f64>(Box::into_raw(req) as u64))); }
+        unsafe { js_sys::eval("self").unwrap().dyn_into::<DedicatedWorkerGlobalScope>().unwrap().post_message(&JsValue::from(std::mem::transmute::<_, f64>(Box::into_raw(req) as u64))).unwrap(); }
     }
 }
 
