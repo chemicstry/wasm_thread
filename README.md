@@ -39,6 +39,12 @@ For a higher-level threading solution, see [wasm-bindgen-rayon](https://github.c
 
 #### wasm-bindgen
 
+- Install nightly toolchain and dependencies:
+```bash
+rustup toolchain install nightly
+rustup component add rust-src --toolchain nightly
+cargo install wasm-bindgen-cli
+```
 - Build with `./build_wasm.sh` (bash) or `./build_wasm.ps1` (PowerShell). This custom build step is required because prebuilt standard library does not have support for atomics yet. Read more about this [here](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html).
 - Serve `examples` directory over HTTP with cross-origin isolation enabled and open `simple.html` in the browser. Inspect console output. You can use `cargo install sfz` as a basic HTTP server and serve with `sfz examples --coi`.
 
