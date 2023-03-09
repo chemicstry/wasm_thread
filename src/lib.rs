@@ -4,6 +4,7 @@ use std::any::Any;
 use std::fmt;
 use std::mem;
 
+use std::sync::Mutex;
 pub use std::thread::{current, sleep, Result, Thread, ThreadId};
 
 use wasm_bindgen::prelude::*;
@@ -19,6 +20,9 @@ struct WebWorkerContext {
 extern "C" {
     fn load_module_workers_polyfill();
 }
+
+type DefaultBuilder = Mutex<Option<Builder>>;
+static DEFAULT_BUILDER: DefaultBuilder = Mutex::new(None);
 
 /// Extracts path of the `wasm_bindgen` generated .js shim script
 pub fn get_wasm_bindgen_shim_script_path() -> String {
@@ -112,10 +116,12 @@ impl WorkerMessage {
 }
 
 /// Thread factory, which can be used in order to configure the properties of a new thread.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Builder {
     // A name for the thread-to-be, for identification in panic messages
     name: Option<String>,
+    // A prefix for the thread-to-be, for identification in panic messages
+    prefix: Option<String>,
     // The size of the stack for the spawned thread in bytes
     stack_size: Option<usize>,
     // Url of the `wasm_bindgen` generated shim `.js` script to use as web worker entry point
@@ -126,7 +132,18 @@ impl Builder {
     /// Generates the base configuration for spawning a thread, from which
     /// configuration methods can be chained.
     pub fn new() -> Builder {
-        Builder::default()
+        let default_builder = DEFAULT_BUILDER.lock().unwrap().clone();
+        default_builder.unwrap_or(Builder::default())
+    }
+
+    pub fn set_default(self) {
+        *DEFAULT_BUILDER.lock().unwrap() = Some(self);
+    }
+
+    /// Sets the prefix of the thread-to-be.
+    pub fn prefix(mut self, prefix: String) -> Builder {
+        self.prefix = Some(prefix);
+        self
     }
 
     /// Names the thread-to-be.
@@ -210,6 +227,7 @@ impl Builder {
     unsafe fn spawn_for_context(self, ctx: WebWorkerContext) {
         let Builder {
             name,
+            prefix,
             wasm_bindgen_shim_url,
             ..
         } = self;
@@ -219,9 +237,20 @@ impl Builder {
 
         // Todo: figure out how to set stack size
         let mut options = WorkerOptions::new();
-        if let Some(name) = name {
-            options.name(&name);
-        }
+        match (name, prefix) {
+            (Some(name), Some(prefix)) => {
+                options.name(&format!("{}:{}", prefix, name));
+            }
+            (Some(name), None) => {
+                options.name(&name);
+            }
+            (None, Some(prefix)) => {
+                let random = (js_sys::Math::random() * 10e10) as u64;
+                options.name(&format!("{}:{}", prefix, random));
+            }
+            (None, None) => {}
+        };
+
         #[cfg(feature = "es_modules")]
         {
             load_module_workers_polyfill();
