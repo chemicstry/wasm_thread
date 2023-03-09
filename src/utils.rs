@@ -1,9 +1,17 @@
-use std::sync::MutexGuard;
+use std::sync::{Mutex, MutexGuard, LockResult, TryLockError};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{Blob, Url};
 
-/// Extracts path of the `wasm_bindgen` generated .js shim script
+#[cfg(feature = "es_modules")]
+#[wasm_bindgen(module = "/src/js/module_workers_polyfill.min.js")]
+extern "C" {
+    fn load_module_workers_polyfill();
+}
+
+/// Extracts path of the `wasm_bindgen` generated .js shim script.
+///
+/// Internally, this intentionally generates a javascript exception to obtain a stacktrace containing the current script URL.
 pub fn get_wasm_bindgen_shim_script_path() -> String {
     js_sys::eval(include_str!("js/script_path.js"))
         .unwrap()
@@ -13,25 +21,22 @@ pub fn get_wasm_bindgen_shim_script_path() -> String {
 
 /// Generates worker entry script as URL encoded blob
 pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
-    static mut SCRIPT_URL: Option<String> = None;
+    // Cache URL so that subsequent calls are less expensive
+    static CACHED_URL: Mutex<Option<String>> = Mutex::new(None);
 
-    if let Some(url) = unsafe { SCRIPT_URL.as_ref() } {
-        url.clone()
+    if let Some(url) = CACHED_URL.lock_spin().unwrap().clone() {
+        url
     } else {
         // If wasm bindgen shim url is not provided, try to obtain one automatically
         let wasm_bindgen_shim_url =
             wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
 
         // Generate script from template
-        let template;
         #[cfg(feature = "es_modules")]
-        {
-            template = include_str!("js/web_worker_module.js");
-        }
+        let template = include_str!("js/web_worker_module.js");
         #[cfg(not(feature = "es_modules"))]
-        {
-            template = include_str!("js/web_worker.js");
-        }
+        let template = include_str!("js/web_worker.js");
+
         let script = template.replace("WASM_BINDGEN_SHIM_URL", &wasm_bindgen_shim_url);
 
         // Create url encoded blob
@@ -44,8 +49,34 @@ pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
                 .unwrap(),
         )
         .unwrap();
-        unsafe { SCRIPT_URL = Some(url.clone()) };
+
+        *CACHED_URL.lock_spin().unwrap() = Some(url.clone());
 
         url
+    }
+}
+
+/// A spin lock mutex extension.
+///
+/// Atomic wait panics in wasm main thread so we can't use `Mutex::lock()`.
+/// This is a helper, which implement spinlock by calling `Mutex::try_lock()` in a loop.
+/// Care must be taken not to introduce deadlocks when using this trait.
+pub trait SpinLockMutex {
+    type Inner;
+
+    fn lock_spin<'a>(&'a self) -> LockResult<MutexGuard<'a, Self::Inner>>;
+}
+
+impl<T> SpinLockMutex for Mutex<T> {
+    type Inner = T;
+
+    fn lock_spin<'a>(&'a self) -> LockResult<MutexGuard<'a, Self::Inner>> {
+        loop {
+            match self.try_lock() {
+                Ok(guard) => break Ok(guard),
+                Err(TryLockError::WouldBlock) => {},
+                Err(TryLockError::Poisoned(e)) => break Err(e)
+            }
+        }
     }
 }
