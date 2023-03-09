@@ -50,10 +50,7 @@ impl Builder {
         F: FnOnce() -> T + Send + 'scope,
         T: Send + 'scope,
     {
-        Ok(ScopedJoinHandle(
-            unsafe { self.spawn_unchecked(f) }?,
-            PhantomData,
-        ))
+        Ok(ScopedJoinHandle(unsafe { self.spawn_unchecked(f) }?, PhantomData))
     }
 }
 
@@ -93,10 +90,7 @@ where
     }
 }
 
-pub struct ScopedJoinHandle<'scope, T>(
-    pub(crate) crate::JoinHandle<T>,
-    pub(crate) PhantomData<&'scope ()>,
-);
+pub struct ScopedJoinHandle<'scope, T>(pub(crate) crate::JoinHandle<T>, pub(crate) PhantomData<&'scope ()>);
 
 impl<'scope, T> ScopedJoinHandle<'scope, T> {
     pub fn join(self) -> std::io::Result<T> {
@@ -115,8 +109,5 @@ where
     F: FnOnce() -> T + Send + 'scope,
     T: Send + 'scope,
 {
-    Ok(ScopedJoinHandle(
-        unsafe { builder.spawn_unchecked(f) }?,
-        PhantomData,
-    ))
+    Ok(ScopedJoinHandle(unsafe { builder.spawn_unchecked(f) }?, PhantomData))
 }

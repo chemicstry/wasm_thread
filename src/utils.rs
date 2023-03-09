@@ -20,7 +20,8 @@ extern "C" {
 
 /// Extracts path of the `wasm_bindgen` generated .js shim script.
 ///
-/// Internally, this intentionally generates a javascript exception to obtain a stacktrace containing the current script URL.
+/// Internally, this intentionally generates a javascript exception to obtain a stacktrace containing the current script
+/// URL.
 pub fn get_wasm_bindgen_shim_script_path() -> String {
     js_sys::eval(include_str!("js/script_path.js"))
         .unwrap()
@@ -37,8 +38,7 @@ pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
         url
     } else {
         // If wasm bindgen shim url is not provided, try to obtain one automatically
-        let wasm_bindgen_shim_url =
-            wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
+        let wasm_bindgen_shim_url = wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
 
         // Generate script from template
         #[cfg(feature = "es_modules")]

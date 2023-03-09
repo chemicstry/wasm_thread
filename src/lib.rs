@@ -1,16 +1,11 @@
+pub use std::thread::{current, sleep, Result, Thread, ThreadId};
+use std::{any::Any, fmt, mem, sync::Mutex};
+
 use async_channel::Receiver;
 use futures::executor::block_on;
-use std::any::Any;
-use std::fmt;
-use std::mem;
-use utils::get_worker_script;
-use utils::SpinLockMutex;
-
 pub use scoped::*;
 pub use utils::*;
-use std::sync::Mutex;
-pub use std::thread::{current, sleep, Result, Thread, ThreadId};
-
+use utils::{get_worker_script, SpinLockMutex};
 use wasm_bindgen::prelude::*;
 use web_sys::{DedicatedWorkerGlobalScope, Worker, WorkerOptions, WorkerType};
 
@@ -78,11 +73,7 @@ pub struct Builder {
 
 impl Default for Builder {
     fn default() -> Self {
-        DEFAULT_BUILDER
-            .lock_spin()
-            .unwrap()
-            .clone()
-            .unwrap_or(Self::empty())
+        DEFAULT_BUILDER.lock_spin().unwrap().clone().unwrap_or(Self::empty())
     }
 }
 
@@ -175,9 +166,7 @@ impl Builder {
             sender.try_send(res).ok();
         });
         let context = WebWorkerContext {
-            func: mem::transmute::<Box<dyn FnOnce() + Send + 'a>, Box<dyn FnOnce() + Send + 'static>>(
-                main,
-            ),
+            func: mem::transmute::<Box<dyn FnOnce() + Send + 'a>, Box<dyn FnOnce() + Send + 'static>>(main),
         };
 
         if MAIN_THREAD_ID.is_none() {
@@ -187,11 +176,7 @@ impl Builder {
         if MAIN_THREAD_ID.unwrap_unchecked() == current().id() {
             self.spawn_for_context(context);
         } else {
-            WorkerMessage::SpawnThread(BuilderRequest {
-                builder: self,
-                context,
-            })
-            .post();
+            WorkerMessage::SpawnThread(BuilderRequest { builder: self, context }).post();
         }
 
         Ok(JoinHandle(JoinInner { receiver }))
@@ -239,9 +224,7 @@ impl Builder {
         let worker_reference = std::rc::Rc::new(std::cell::Cell::new(None));
         let worker_reference_callback = worker_reference.clone();
         let callback = Closure::wrap(Box::new(move |x: &web_sys::MessageEvent| {
-            let req = Box::from_raw(
-                std::mem::transmute::<_, u64>(x.data().as_f64().unwrap()) as *mut WorkerMessage
-            );
+            let req = Box::from_raw(std::mem::transmute::<_, u64>(x.data().as_f64().unwrap()) as *mut WorkerMessage);
             match *req {
                 WorkerMessage::SpawnThread(builder) => {
                     builder.spawn();
