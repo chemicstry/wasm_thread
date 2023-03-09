@@ -1,7 +1,16 @@
-use std::sync::{Mutex, MutexGuard, LockResult, TryLockError};
+use std::{
+    io,
+    num::NonZeroUsize,
+    sync::{LockResult, Mutex, MutexGuard, TryLockError},
+};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{Blob, Url};
+
+pub fn available_parallelism() -> io::Result<NonZeroUsize> {
+    // TODO: Use [Navigator::hardware_concurrency](https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Navigator.html#method.hardware_concurrency)
+    Ok(NonZeroUsize::new(8).unwrap())
+}
 
 #[cfg(feature = "es_modules")]
 #[wasm_bindgen(module = "/src/js/module_workers_polyfill.min.js")]
@@ -74,8 +83,8 @@ impl<T> SpinLockMutex for Mutex<T> {
         loop {
             match self.try_lock() {
                 Ok(guard) => break Ok(guard),
-                Err(TryLockError::WouldBlock) => {},
-                Err(TryLockError::Poisoned(e)) => break Err(e)
+                Err(TryLockError::WouldBlock) => {}
+                Err(TryLockError::Poisoned(e)) => break Err(e),
             }
         }
     }
