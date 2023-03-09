@@ -43,42 +43,40 @@ pub fn get_wasm_bindgen_shim_script_path() -> String {
 
 /// Generates worker entry script as URL encoded blob
 pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
-    unsafe {
-        static mut SCRIPT_URL: Option<String> = None;
+    static mut SCRIPT_URL: Option<String> = None;
 
-        if let Some(url) = SCRIPT_URL.as_ref() {
-            url.clone()
-        } else {
-            // If wasm bindgen shim url is not provided, try to obtain one automatically
-            let wasm_bindgen_shim_url =
-                wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
+    if let Some(url) = unsafe { SCRIPT_URL.as_ref() } {
+        url.clone()
+    } else {
+        // If wasm bindgen shim url is not provided, try to obtain one automatically
+        let wasm_bindgen_shim_url =
+            wasm_bindgen_shim_url.unwrap_or_else(get_wasm_bindgen_shim_script_path);
 
-            // Generate script from template
-            let template;
-            #[cfg(feature = "es_modules")]
-            {
-                template = include_str!("web_worker_module.js");
-            }
-            #[cfg(not(feature = "es_modules"))]
-            {
-                template = include_str!("web_worker.js");
-            }
-            let script = template.replace("WASM_BINDGEN_SHIM_URL", &wasm_bindgen_shim_url);
-
-            // Create url encoded blob
-            let arr = js_sys::Array::new();
-            arr.set(0, JsValue::from_str(&script));
-            let blob = Blob::new_with_str_sequence(&arr).unwrap();
-            let url = Url::create_object_url_with_blob(
-                &blob
-                    .slice_with_f64_and_f64_and_content_type(0.0, blob.size(), "text/javascript")
-                    .unwrap(),
-            )
-            .unwrap();
-            SCRIPT_URL = Some(url.clone());
-
-            url
+        // Generate script from template
+        let template;
+        #[cfg(feature = "es_modules")]
+        {
+            template = include_str!("web_worker_module.js");
         }
+        #[cfg(not(feature = "es_modules"))]
+        {
+            template = include_str!("web_worker.js");
+        }
+        let script = template.replace("WASM_BINDGEN_SHIM_URL", &wasm_bindgen_shim_url);
+
+        // Create url encoded blob
+        let arr = js_sys::Array::new();
+        arr.set(0, JsValue::from_str(&script));
+        let blob = Blob::new_with_str_sequence(&arr).unwrap();
+        let url = Url::create_object_url_with_blob(
+            &blob
+                .slice_with_f64_and_f64_and_content_type(0.0, blob.size(), "text/javascript")
+                .unwrap(),
+        )
+        .unwrap();
+        unsafe { SCRIPT_URL = Some(url.clone()) };
+
+        url
     }
 }
 
@@ -111,16 +109,14 @@ enum WorkerMessage {
 impl WorkerMessage {
     pub fn post(self) {
         let req = Box::new(self);
-        unsafe {
-            js_sys::eval("self")
-                .unwrap()
-                .dyn_into::<DedicatedWorkerGlobalScope>()
-                .unwrap()
-                .post_message(&JsValue::from(std::mem::transmute::<_, f64>(
-                    Box::into_raw(req) as u64,
-                )))
-                .unwrap();
-        }
+        let req = unsafe { std::mem::transmute::<_, f64>(Box::into_raw(req) as u64) };
+
+        js_sys::eval("self")
+            .unwrap()
+            .dyn_into::<DedicatedWorkerGlobalScope>()
+            .unwrap()
+            .post_message(&JsValue::from(req))
+            .unwrap();
     }
 }
 
