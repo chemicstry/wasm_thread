@@ -25,7 +25,7 @@ struct WebWorkerContext {
 }
 
 #[cfg(feature = "es_modules")]
-#[wasm_bindgen(module = "/src/module_workers_polyfill.min.js")]
+#[wasm_bindgen(module = "/src/js/module_workers_polyfill.min.js")]
 extern "C" {
     fn load_module_workers_polyfill();
 }
@@ -35,7 +35,7 @@ static DEFAULT_BUILDER: DefaultBuilder = Mutex::new(None);
 
 /// Extracts path of the `wasm_bindgen` generated .js shim script
 pub fn get_wasm_bindgen_shim_script_path() -> String {
-    js_sys::eval(include_str!("script_path.js"))
+    js_sys::eval(include_str!("js/script_path.js"))
         .unwrap()
         .as_string()
         .unwrap()
@@ -56,11 +56,11 @@ pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
         let template;
         #[cfg(feature = "es_modules")]
         {
-            template = include_str!("web_worker_module.js");
+            template = include_str!("js/web_worker_module.js");
         }
         #[cfg(not(feature = "es_modules"))]
         {
-            template = include_str!("web_worker.js");
+            template = include_str!("js/web_worker.js");
         }
         let script = template.replace("WASM_BINDGEN_SHIM_URL", &wasm_bindgen_shim_url);
 
