@@ -40,4 +40,37 @@ fn main() {
     for i in 1..3 {
         log::info!("hi number {} from the main thread {:?}!", i, thread::current().id());
     }
+
+    // It's not possible to do a scope on the main thread, because blocking waits are not supported, but we can use
+    // scope inside web workers.
+    thread::spawn(|| {
+        log::info!("Start scope test on thread {:?}", thread::current().id());
+
+        let mut a = vec![1, 2, 3];
+        let mut x = 0;
+
+        thread::scope(|s| {
+            s.spawn(|| {
+                log::info!("hello from the first scoped thread {:?}", thread::current().id());
+                // We can borrow `a` here.
+                log::debug!("a = {:?}", &a);
+            });
+            s.spawn(|| {
+                log::info!("hello from the second scoped thread {:?}", thread::current().id());
+                // We can even mutably borrow `x` here,
+                // because no other threads are using it.
+                x += a[0] + a[2];
+            });
+
+            log::info!(
+                "Hello from scope \"main\" thread {:?} inside scope.",
+                thread::current().id()
+            );
+        });
+
+        // After the scope, we can modify and access our variables again:
+        a.push(4);
+        assert_eq!(x, a.len());
+        log::info!("Scope done x={} a.len()={}", x, a.len());
+    });
 }

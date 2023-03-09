@@ -1,5 +1,9 @@
 pub use std::thread::{current, sleep, Result, Thread, ThreadId};
-use std::{any::Any, fmt, mem, sync::Mutex};
+use std::{
+    fmt, mem,
+    panic::{catch_unwind, AssertUnwindSafe},
+    sync::{Arc, Mutex},
+};
 
 use async_channel::Receiver;
 use futures::executor::block_on;
@@ -159,10 +163,19 @@ impl Builder {
         F: Send + 'a,
         T: Send + 'a,
     {
+        Ok(JoinHandle(unsafe { self.spawn_unchecked_(f, None) }?))
+    }
+
+    unsafe fn spawn_unchecked_<'a, F, T>(self, f: F, scope: Option<Arc<ScopeData>>) -> std::io::Result<JoinInner<T>>
+    where
+        F: FnOnce() -> T,
+        F: Send + 'a,
+        T: Send + 'a,
+    {
         let (sender, receiver) = async_channel::bounded(1);
 
         let main = Box::new(move || {
-            let res = f();
+            let res = catch_unwind(AssertUnwindSafe(|| f()));
             sender.try_send(res).ok();
         });
         let context = WebWorkerContext {
@@ -179,7 +192,11 @@ impl Builder {
             WorkerMessage::SpawnThread(BuilderRequest { builder: self, context }).post();
         }
 
-        Ok(JoinHandle(JoinInner { receiver }))
+        if let Some(scope) = &scope {
+            scope.increment_num_running_threads();
+        }
+
+        Ok(JoinInner { receiver, scope })
     }
 
     unsafe fn spawn_for_context(self, ctx: WebWorkerContext) {
@@ -261,19 +278,29 @@ impl Builder {
 
 /// Inner representation for JoinHandle
 struct JoinInner<T> {
-    // thread: Thread,
-    receiver: Receiver<T>,
+    receiver: Receiver<Result<T>>,
+    scope: Option<Arc<ScopeData>>,
 }
 
 impl<T> JoinInner<T> {
-    fn join(&mut self) -> Result<T> {
+    fn join(self) -> Result<T> {
         let res = block_on(self.receiver.recv());
-        res.map_err(|e| Box::new(e) as Box<(dyn Any + Send + 'static)>)
+
+        if let Some(scope) = &self.scope {
+            scope.decrement_num_running_threads(false);
+        }
+
+        res.unwrap()
     }
 
-    async fn join_async(&mut self) -> Result<T> {
+    async fn join_async(self) -> Result<T> {
         let res = self.receiver.recv().await;
-        res.map_err(|e| Box::new(e) as Box<(dyn Any + Send + 'static)>)
+
+        if let Some(scope) = &self.scope {
+            scope.decrement_num_running_threads(false);
+        }
+
+        res.unwrap()
     }
 }
 
@@ -288,12 +315,12 @@ impl<T> JoinHandle<T> {
     }
 
     /// Waits for the associated thread to finish.
-    pub fn join(mut self) -> Result<T> {
+    pub fn join(self) -> Result<T> {
         self.0.join()
     }
 
     /// Waits for the associated thread to finish asynchronously.
-    pub async fn join_async(mut self) -> Result<T> {
+    pub async fn join_async(self) -> Result<T> {
         self.0.join_async().await
     }
 }

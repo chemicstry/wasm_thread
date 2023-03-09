@@ -3,20 +3,15 @@ use std::{
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc,
+        Arc, Barrier,
     },
-    thread::{current, sleep, Thread},
-    time::Duration,
 };
 
-use crate::Builder;
+use crate::{is_web_worker_thread, Builder, JoinInner};
 
-pub struct ScopeData {
-    num_running_threads: AtomicUsize,
-    a_thread_panicked: AtomicBool,
-    main_thread: Thread,
-}
-
+/// A scope to spawn scoped threads in.
+///
+/// See [`scope`] for details.
 pub struct Scope<'scope, 'env: 'scope> {
     data: Arc<ScopeData>,
     /// Invariance over 'scope, to make sure 'scope cannot shrink,
@@ -36,35 +31,79 @@ pub struct Scope<'scope, 'env: 'scope> {
     env: PhantomData<&'env mut &'env ()>,
 }
 
-impl Builder {
-    /// Spawns a new scoped thread using the settings set through this `Builder`.
-    ///
-    /// Unlike [Scope::spawn], this method yields an [`io::Result`] to
-    /// capture any failure to create the thread at the OS level.
-    pub fn spawn_scoped<'scope, 'env, F, T>(
-        self,
-        _scope: &'scope Scope<'scope, 'env>,
-        f: F,
-    ) -> std::io::Result<ScopedJoinHandle<'scope, T>>
-    where
-        F: FnOnce() -> T + Send + 'scope,
-        T: Send + 'scope,
-    {
-        Ok(ScopedJoinHandle(unsafe { self.spawn_unchecked(f) }?, PhantomData))
+/// An owned permission to join on a scoped thread (block on its termination).
+///
+/// See [`Scope::spawn`] for details.
+pub struct ScopedJoinHandle<'scope, T>(pub(crate) JoinInner<T>, pub(crate) PhantomData<&'scope ()>);
+
+pub(super) struct ScopeData {
+    num_running_threads: AtomicUsize,
+    a_thread_panicked: AtomicBool,
+    /// Blocks main thread until all other threads finish execution.
+    /// Rust no longer has a simple semaphore so we use barrier instead.
+    main_thread_barrier: Barrier,
+}
+
+impl ScopeData {
+    pub(super) fn increment_num_running_threads(&self) {
+        // We check for 'overflow' with usize::MAX / 2, to make sure there's no
+        // chance it overflows to 0, which would result in unsoundness.
+        if self.num_running_threads.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
+            // This can only reasonably happen by mem::forget()'ing a lot of ScopedJoinHandles.
+            self.decrement_num_running_threads(false);
+            panic!("too many running threads in thread scope");
+        }
+    }
+
+    pub(super) fn decrement_num_running_threads(&self, panic: bool) {
+        if panic {
+            self.a_thread_panicked.store(true, Ordering::Relaxed);
+        }
+
+        if self.num_running_threads.fetch_sub(1, Ordering::Release) == 1 {
+            // Barrier is initialized with 2 and first wait is consumed by the main thread so this will decrease counter
+            // to 0 and wake it.
+            self.main_thread_barrier.wait();
+        }
     }
 }
 
+/// Create a scope for spawning scoped threads.
+///
+/// The function passed to `scope` will be provided a [`Scope`] object,
+/// through which scoped threads can be [spawned][`Scope::spawn`].
+///
+/// Unlike non-scoped threads, scoped threads can borrow non-`'static` data,
+/// as the scope guarantees all threads will be joined at the end of the scope.
+///
+/// All threads spawned within the scope that haven't been manually joined
+/// will be automatically joined before this function returns.
+///
+/// # Panics
+///
+/// If any of the automatically joined threads panicked, this function will panic.
+///
+/// If you want to handle panics from spawned threads,
+/// [`join`][ScopedJoinHandle::join] them before the end of the scope.
+///
+/// On wasm, this will panic on main thread because blocking join is not allowed.
 pub fn scope<'env, F, T>(f: F) -> T
 where
     F: for<'scope> FnOnce(&'scope Scope<'scope, 'env>) -> T,
 {
+    // Fail early to avoid flaky panics that depend on execution time
+    if !is_web_worker_thread() {
+        panic!("scope is not allowed on the main thread");
+    }
+
     // We put the `ScopeData` into an `Arc` so that other threads can finish their
     // `decrement_num_running_threads` even after this function returns.
     let scope = Scope {
         data: Arc::new(ScopeData {
             num_running_threads: AtomicUsize::new(0),
-            main_thread: current(),
             a_thread_panicked: AtomicBool::new(false),
+            // Initialize barrier with 2 slots: one for main thread and second for the waker.
+            main_thread_barrier: Barrier::new(2),
         }),
         env: PhantomData,
         scope: PhantomData,
@@ -75,9 +114,7 @@ where
 
     // Wait until all the threads are finished.
     while scope.data.num_running_threads.load(Ordering::Acquire) != 0 {
-        // park();
-        // TODO: Replaced by a wasm-friendly version of park()
-        sleep(Duration::from_millis(1));
+        scope.data.main_thread_barrier.wait();
     }
 
     // Throw any panic from `f`, or the return value of `f` if no thread panicked.
@@ -90,24 +127,63 @@ where
     }
 }
 
-pub struct ScopedJoinHandle<'scope, T>(pub(crate) crate::JoinHandle<T>, pub(crate) PhantomData<&'scope ()>);
-
-impl<'scope, T> ScopedJoinHandle<'scope, T> {
-    pub fn join(self) -> std::io::Result<T> {
-        self.0
-            .join()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, ""))
+impl<'scope, 'env> Scope<'scope, 'env> {
+    /// Spawns a new thread within a scope, returning a [`ScopedJoinHandle`] for it.
+    ///
+    /// Unlike non-scoped threads, threads spawned with this function may
+    /// borrow non-`'static` data from the outside the scope. See [`scope`] for
+    /// details.
+    ///
+    /// The join handle provides a [`join`] method that can be used to join the spawned
+    /// thread. If the spawned thread panics, [`join`] will return an [`Err`] containing
+    /// the panic payload.
+    ///
+    /// If the join handle is dropped, the spawned thread will implicitly joined at the
+    /// end of the scope. In that case, if the spawned thread panics, [`scope`] will
+    /// panic after all threads are joined.
+    ///
+    /// This call will create a thread using default parameters of [`Builder`].
+    /// If you want to specify the stack size or the name of the thread, use
+    /// [`Builder::spawn_scoped`] instead.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the OS fails to create a thread; use [`Builder::spawn_scoped`]
+    /// to recover from such errors.
+    ///
+    /// [`join`]: ScopedJoinHandle::join
+    pub fn spawn<F, T>(&'scope self, f: F) -> ScopedJoinHandle<'scope, T>
+    where
+        F: FnOnce() -> T + Send + 'scope,
+        T: Send + 'scope,
+    {
+        Builder::new().spawn_scoped(self, f).expect("failed to spawn thread")
     }
 }
 
-pub fn spawn_scoped<'scope, 'env, F, T>(
-    builder: crate::Builder,
-    scope: &'scope Scope<'scope, 'env>,
-    f: F,
-) -> std::io::Result<ScopedJoinHandle<'scope, T>>
-where
-    F: FnOnce() -> T + Send + 'scope,
-    T: Send + 'scope,
-{
-    Ok(ScopedJoinHandle(unsafe { builder.spawn_unchecked(f) }?, PhantomData))
+impl Builder {
+    /// Spawns a new scoped thread using the settings set through this `Builder`.
+    ///
+    /// Unlike [Scope::spawn], this method yields an [`io::Result`] to
+    /// capture any failure to create the thread at the OS level.
+    pub fn spawn_scoped<'scope, 'env, F, T>(
+        self,
+        scope: &'scope Scope<'scope, 'env>,
+        f: F,
+    ) -> std::io::Result<ScopedJoinHandle<'scope, T>>
+    where
+        F: FnOnce() -> T + Send + 'scope,
+        T: Send + 'scope,
+    {
+        Ok(ScopedJoinHandle(
+            unsafe { self.spawn_unchecked_(f, Some(scope.data.clone())) }?,
+            PhantomData,
+        ))
+    }
+}
+
+impl<'scope, T> ScopedJoinHandle<'scope, T> {
+    pub fn join(self) -> crate::Result<T> {
+        self.0.join()
+    }
 }
