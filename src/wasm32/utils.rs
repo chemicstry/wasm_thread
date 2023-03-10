@@ -27,9 +27,9 @@ pub fn is_web_worker_thread() -> bool {
 }
 
 #[cfg(feature = "es_modules")]
-#[wasm_bindgen(module = "/src/js/module_workers_polyfill.min.js")]
+#[wasm_bindgen(module = "/src/wasm32/js/module_workers_polyfill.min.js")]
 extern "C" {
-    fn load_module_workers_polyfill();
+    pub fn load_module_workers_polyfill();
 }
 
 /// Extracts path of the `wasm_bindgen` generated .js shim script.

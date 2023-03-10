@@ -288,7 +288,7 @@ impl Builder {
 
         #[cfg(feature = "es_modules")]
         {
-            load_module_workers_polyfill();
+            utils::load_module_workers_polyfill();
             options.type_(WorkerType::Module);
         }
         #[cfg(not(feature = "es_modules"))]

@@ -2,26 +2,13 @@ use std::time::Duration;
 
 use wasm_thread as thread;
 
-#[cfg(target_arch = "wasm32")]
-mod wasm {
-    use wasm_bindgen::prelude::*;
-
-    use crate::main;
-
-    // Prevent `wasm_bindgen` from autostarting main on all spawned threads
-    #[wasm_bindgen(start)]
-    pub fn dummy_main() {}
-
-    // Export explicit run function to start main
-    #[wasm_bindgen]
-    pub fn run() {
+fn main() {
+    #[cfg(target_arch = "wasm32")]
+    {
         console_log::init().unwrap();
         console_error_panic_hook::set_once();
-        main();
     }
-}
 
-fn main() {
     #[cfg(not(target_arch = "wasm32"))]
     env_logger::init_from_env(env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"));
 
@@ -82,7 +69,7 @@ fn main() {
     }));
 
     // Wait for all threads, otherwise program exits before threads finish execution.
-    // We can't do blocking join on wasm main thread though.
+    // We can't do blocking join on wasm main thread though, but the browser window will continue running.
     #[cfg(not(target_arch = "wasm32"))]
     for handle in threads {
         handle.join().unwrap();

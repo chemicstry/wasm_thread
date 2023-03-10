@@ -50,7 +50,11 @@ cargo install wasm-bindgen-cli
 
 #### wasm-pack
 
-- Build with `./examples-wasm-pack/web-build.sh` for an example targeting `web`, and `./examples/wasm-pack/web-build-no-module.sh` for an example targeting `no-modules`.
+- Install `wasm-pack`:
+```bash
+cargo install wasm-pack
+```
+- Build with `./examples-wasm-pack/web-build.sh` for an example targeting `web`, and `./examples-wasm-pack/web-build-no-module.sh` for an example targeting `no-modules`.
 - Serve `./examples-wasm-pack/module` or `./examples-wasm-pack/no-module`, respectively, over HTTP and open `simple.html` in browser. Inspect console output.
 
 ### Example output
