@@ -53,10 +53,11 @@ impl Signal {
     /// Asynchronously waits until [Self::signal] is called.
     pub async fn wait_async(&self) {
         poll_fn(|cx| {
+            self.waiters.lock_spin().unwrap().push(cx.waker().clone());
+
             if self.value.load(Ordering::Relaxed) == 1 {
                 Poll::Ready(())
             } else {
-                self.waiters.lock_spin().unwrap().push(cx.waker().clone());
                 Poll::Pending
             }
         })
