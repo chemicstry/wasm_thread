@@ -1,0 +1,24 @@
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Rustfmt
+        run: cargo fmt --all --check
+
+      - name: Test native
+        run: cargo test
+
+      - name: Test wasm
+        run: ./test_wasm.sh
+
+      - name: Build docs
+        env:
+          RUSTDOCFLAGS: "-Dwarnings"
+        run: cargo doc --no-deps --lib --target wasm32-unknown-unknown
