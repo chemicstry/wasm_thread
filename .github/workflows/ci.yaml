@@ -2,6 +2,10 @@ on: [push, pull_request]
 
 jobs:
   test:
+    # Prevent running double CI when pull request is on the same repository
+    if: |
+      (github.event_name != 'pull_request')
+      || (github.event.pull_request.head.repo.id != github.event.pull_request.base.repo.id)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
