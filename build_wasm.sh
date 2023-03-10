@@ -20,4 +20,4 @@ RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' \
 wasm-bindgen \
   target/wasm32-unknown-unknown/release/examples/simple.wasm \
   --out-dir ./examples/target/ \
-  --target no-modules
+  --target web
