@@ -139,7 +139,7 @@ impl Builder {
     }
 
     /// Spawns a new thread by taking ownership of the `Builder`, and returns an
-    /// [`io::Result`] to its [`JoinHandle`].
+    /// [std::io::Result] to its [`JoinHandle`].
     pub fn spawn<F, T>(self, f: F) -> std::io::Result<JoinHandle<T>>
     where
         F: FnOnce() -> T,
@@ -150,7 +150,7 @@ impl Builder {
     }
 
     /// Spawns a new thread without any lifetime restrictions by taking ownership
-    /// of the `Builder`, and returns an [`io::Result`] to its [`JoinHandle`].
+    /// of the `Builder`, and returns an [std::io::Result] to its [`JoinHandle`].
     ///
     /// # Safety
     ///
