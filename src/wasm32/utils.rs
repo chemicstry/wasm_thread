@@ -8,8 +8,18 @@ use wasm_bindgen::prelude::*;
 use web_sys::{Blob, Url, WorkerGlobalScope};
 
 pub fn available_parallelism() -> io::Result<NonZeroUsize> {
-    // TODO: Use [Navigator::hardware_concurrency](https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Navigator.html#method.hardware_concurrency)
-    Ok(NonZeroUsize::new(8).unwrap())
+    if let Some(window) = web_sys::window() {
+        return Ok(NonZeroUsize::new(window.navigator().hardware_concurrency() as usize).unwrap());
+    }
+
+    if let Ok(worker) = js_sys::eval("self").unwrap().dyn_into::<WorkerGlobalScope>() {
+        return Ok(NonZeroUsize::new(worker.navigator().hardware_concurrency() as usize).unwrap());
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "hardware_concurrency unsupported",
+    ))
 }
 
 pub fn is_web_worker_thread() -> bool {

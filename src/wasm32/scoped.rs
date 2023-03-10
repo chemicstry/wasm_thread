@@ -3,11 +3,11 @@ use std::{
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc, Barrier,
+        Arc,
     },
 };
 
-use crate::{is_web_worker_thread, Builder, JoinInner};
+use super::{signal::Signal, utils::is_web_worker_thread, Builder, JoinInner};
 
 /// A scope to spawn scoped threads in.
 ///
@@ -34,18 +34,16 @@ pub struct Scope<'scope, 'env: 'scope> {
 /// An owned permission to join on a scoped thread (block on its termination).
 ///
 /// See [`Scope::spawn`] for details.
-pub struct ScopedJoinHandle<'scope, T>(pub(crate) JoinInner<T>, pub(crate) PhantomData<&'scope ()>);
+pub struct ScopedJoinHandle<'scope, T>(JoinInner<'scope, T>);
 
-pub(super) struct ScopeData {
+pub(crate) struct ScopeData {
     num_running_threads: AtomicUsize,
     a_thread_panicked: AtomicBool,
-    /// Blocks main thread until all other threads finish execution.
-    /// Rust no longer has a simple semaphore so we use barrier instead.
-    main_thread_barrier: Barrier,
+    signal: Signal,
 }
 
 impl ScopeData {
-    pub(super) fn increment_num_running_threads(&self) {
+    pub(crate) fn increment_num_running_threads(&self) {
         // We check for 'overflow' with usize::MAX / 2, to make sure there's no
         // chance it overflows to 0, which would result in unsoundness.
         if self.num_running_threads.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
@@ -55,15 +53,14 @@ impl ScopeData {
         }
     }
 
-    pub(super) fn decrement_num_running_threads(&self, panic: bool) {
+    pub(crate) fn decrement_num_running_threads(&self, panic: bool) {
         if panic {
             self.a_thread_panicked.store(true, Ordering::Relaxed);
         }
 
         if self.num_running_threads.fetch_sub(1, Ordering::Release) == 1 {
-            // Barrier is initialized with 2 and first wait is consumed by the main thread so this will decrease counter
-            // to 0 and wake it.
-            self.main_thread_barrier.wait();
+            // All threads have terminated
+            self.signal.signal();
         }
     }
 }
@@ -102,8 +99,7 @@ where
         data: Arc::new(ScopeData {
             num_running_threads: AtomicUsize::new(0),
             a_thread_panicked: AtomicBool::new(false),
-            // Initialize barrier with 2 slots: one for main thread and second for the waker.
-            main_thread_barrier: Barrier::new(2),
+            signal: Signal::new(),
         }),
         env: PhantomData,
         scope: PhantomData,
@@ -114,7 +110,7 @@ where
 
     // Wait until all the threads are finished.
     while scope.data.num_running_threads.load(Ordering::Acquire) != 0 {
-        scope.data.main_thread_barrier.wait();
+        scope.data.signal.wait();
     }
 
     // Throw any panic from `f`, or the return value of `f` if no thread panicked.
@@ -175,15 +171,18 @@ impl Builder {
         F: FnOnce() -> T + Send + 'scope,
         T: Send + 'scope,
     {
-        Ok(ScopedJoinHandle(
-            unsafe { self.spawn_unchecked_(f, Some(scope.data.clone())) }?,
-            PhantomData,
-        ))
+        Ok(ScopedJoinHandle(unsafe {
+            self.spawn_unchecked_(f, Some(scope.data.clone()))
+        }?))
     }
 }
 
 impl<'scope, T> ScopedJoinHandle<'scope, T> {
-    pub fn join(self) -> crate::Result<T> {
+    pub fn join(self) -> super::Result<T> {
         self.0.join()
+    }
+
+    pub async fn join_async(self) -> super::Result<T> {
+        self.0.join_async().await
     }
 }
