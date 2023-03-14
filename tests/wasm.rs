@@ -1,5 +1,10 @@
 #![cfg(target_arch = "wasm32")]
 
+use core::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
+
 use wasm_bindgen_test::*;
 use wasm_thread as thread;
 
@@ -55,6 +60,38 @@ async fn thread_scope_sync() {
         // After the scope, we can modify and access our variables again:
         a.push(4);
         assert_eq!(x, a.len());
+    })
+    .join_async()
+    .await
+    .unwrap();
+}
+
+#[wasm_bindgen_test]
+async fn thread_scope_sync_block() {
+    // synchronous scope only allowed inside threads
+    thread::spawn(|| {
+        let t1_done = AtomicBool::new(false);
+        let t2_done = AtomicBool::new(false);
+
+        thread::scope(|s| {
+            s.spawn(|| {
+                thread::sleep(Duration::from_millis(100));
+                t1_done.store(true, Ordering::Relaxed);
+            });
+
+            s.spawn(|| {
+                thread::sleep(Duration::from_millis(100));
+                t2_done.store(true, Ordering::Relaxed);
+            });
+
+            // Threads should be in sleep and not yet done
+            assert_eq!(t1_done.load(Ordering::Relaxed), false);
+            assert_eq!(t2_done.load(Ordering::Relaxed), false);
+        });
+
+        // Scope should block until both threads terminate
+        assert_eq!(t1_done.load(Ordering::Relaxed), true);
+        assert_eq!(t2_done.load(Ordering::Relaxed), true);
     })
     .join_async()
     .await
