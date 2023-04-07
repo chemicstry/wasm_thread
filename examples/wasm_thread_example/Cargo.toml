@@ -1,0 +1,21 @@
+[package]
+name = "wasm_thread_example"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm_thread = { git = "https://github.com/chemicstry/wasm_thread.git", features = [
+    "es_modules",
+], branch = "refactor" }
+wasm-bindgen = { version = "0.2" }
+wasm-bindgen-futures = "0.4.34"
+
+# Dev dependencies
+log = { version = "0.4" }
+env_logger = { version = "0.8" }
+console_error_panic_hook = { version = "0.1.6" }
+console_log = { version = "1.0.0", features = ["color"] }
