@@ -1,7 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 
 use core::{
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
 };
 
@@ -96,4 +96,78 @@ async fn thread_scope_sync_block() {
     .join_async()
     .await
     .unwrap();
+}
+
+#[wasm_bindgen_test]
+async fn thread_messaging() {
+    use std::{
+        sync::mpsc::{channel, Receiver},
+        thread as std_thread,
+    };
+
+    let (tx, rx) = channel();
+    static ATOMIC_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    fn reader_callback(rx: Receiver<String>) {
+        while let Ok(_) = rx.recv() {
+            let old_value = ATOMIC_COUNT.fetch_add(1, Ordering::Relaxed);
+            if old_value == usize::MAX {
+                break;
+            }
+
+            std_thread::sleep(Duration::from_millis(200));
+        }
+    }
+
+    let reader_thread = thread::Builder::new()
+        .name(String::from("reader"))
+        .spawn(|| reader_callback(rx))
+        .unwrap();
+
+    for i in 0..1000 {
+        tx.send(format!("message {}", i)).unwrap();
+    }
+
+    let _ = thread::spawn(move || {
+        std_thread::sleep(Duration::from_millis(1100));
+
+        let value = ATOMIC_COUNT.load(Ordering::Relaxed);
+        std::assert_eq!(value, 6);
+        ATOMIC_COUNT.store(usize::MAX, Ordering::Relaxed);
+    })
+    .join_async()
+    .await
+    .unwrap();
+
+    reader_thread.join_async().await.unwrap();
+}
+
+#[wasm_bindgen_test]
+async fn thread_no_join() {
+    use std::sync::mpsc::channel;
+
+    let (tx, rx) = channel();
+    static ATOMIC_STARTED: AtomicBool = AtomicBool::new(false);
+
+    let _ = thread::Builder::new()
+        .name(String::from("polled"))
+        .spawn(move || {
+            ATOMIC_STARTED.store(true, Ordering::Relaxed);
+            rx.recv().unwrap();
+        })
+        .unwrap();
+
+    let _ = thread::Builder::new()
+        .name(String::from("awaiter"))
+        .spawn(move || {
+            thread::sleep(Duration::from_millis(1000));
+            let started = ATOMIC_STARTED.load(Ordering::Relaxed);
+            std::assert_eq!(started, true);
+        })
+        .unwrap()
+        .join_async()
+        .await
+        .unwrap();
+
+    tx.send(()).unwrap();
 }
