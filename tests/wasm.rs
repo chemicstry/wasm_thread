@@ -97,3 +97,31 @@ async fn thread_scope_sync_block() {
     .await
     .unwrap();
 }
+
+#[wasm_bindgen_test]
+async fn thread_async_channel() {
+    // Exchange a series of messages over async channel.
+    // This test ensures that web worker thread does not terminate prematurely.
+    let (thread_tx, main_rx) = async_channel::unbounded::<String>();
+    let (main_tx, thread_rx) = async_channel::unbounded::<String>();
+
+    thread::spawn(|| {
+        // Spawn async closure into browser's event loop.
+        // Synchronous thread closure will terminate shortly,
+        // but the webworker should continue running.
+        wasm_bindgen_futures::spawn_local(async move {
+            thread::sleep(Duration::from_millis(100));
+            thread_tx.send("Hello".to_string()).await.unwrap();
+            let mut msg = thread_rx.recv().await.unwrap();
+            msg.push_str("!");
+            thread_tx.send(msg).await.unwrap();
+        })
+    });
+
+    let mut msg = main_rx.recv().await.unwrap();
+    msg.push_str(" world");
+    main_tx.send(msg).await.unwrap();
+
+    let result = main_rx.recv().await.unwrap();
+    assert_eq!(result, "Hello world!");
+}
