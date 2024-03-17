@@ -13,7 +13,7 @@ set -ex
 #   shared memory, passive segments, etc.
 
 RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' \
-  cargo build --example simple --target wasm32-unknown-unknown --release -Z build-std=std,panic_abort
+  cargo +nightly build --example simple --target wasm32-unknown-unknown --release -Z build-std=std,panic_abort
 
 # Note the usage of `--target no-modules` here which is required for passing
 # the memory import to each wasm module.
