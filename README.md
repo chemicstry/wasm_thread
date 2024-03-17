@@ -13,7 +13,7 @@ Note that some API is still missing and may be even impossible to implement give
 ## Using as a library
 
 - Add `wasm_thread` to your `Cargo.toml`.
-- This project supports `wasm-pack` targets `web` and `no-modules`. If building for `web`, enable the crate feature `es_modules`. Otherwise, this package will target `no-modules` by default.
+- This project supports `wasm-pack` targets `web` and `no-modules`. `es_modules` feature is enabled by default, if building for `no-modules`, use `default-feature = false` when specifying dependency.
 - Replace `use std::thread` with `use wasm_thread as thread`. Note that some API might be missing.
 - Build normally using `wasm-pack` or adapt [build_wasm.sh](build_wasm.sh) to your project.
 
