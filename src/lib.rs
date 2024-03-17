@@ -1,4 +1,4 @@
-#![cfg_attr(target_arch = "wasm32", feature(stdsimd))]
+#![cfg_attr(target_arch = "wasm32", feature(stdarch_wasm_atomic_wait))]
 
 // Import reusable APIs from std
 pub use std::thread::{current, sleep, Result, Thread, ThreadId};
