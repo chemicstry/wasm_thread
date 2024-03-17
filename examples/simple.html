@@ -1,13 +1,14 @@
 <html>
-  <head>
-    <meta charset="UTF-8" />
-  </head>
-  <body>
-    <script src="./target/simple.js"></script>
-    <script type="text/javascript">
-      wasm_bindgen('./target/simple_bg.wasm').then((wasm) => {
-        wasm.run();
-      });
-    </script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+</head>
+
+<body>
+  <script type="module">
+    import init from "./target/simple.js";
+    init();
+  </script>
+</body>
+
 </html>
