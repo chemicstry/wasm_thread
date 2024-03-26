@@ -121,3 +121,26 @@ async fn thread_async_channel() {
     let result = main_rx.recv().await.unwrap();
     assert_eq!(result, "Hello world!");
 }
+
+
+#[wasm_bindgen_test]
+async fn keep_worker_alive(){
+    let (thread_tx, main_rx) = async_channel::unbounded::<String>();
+
+    thread::spawn(|| {
+        wasm_bindgen_futures::spawn_local(async move {
+            let promise = js_sys::Promise::resolve(&wasm_bindgen::JsValue::from(42));
+            // Convert that promise into a future 
+            let x = wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+            // This should send if "keep_worker_alive" is enabled. If disabled, 
+            // the thread will close before the message can be sent
+            thread_tx.send("After js future".to_string()).await.unwrap();
+        });
+    });
+    // If "keep_worker_alive" is disabled this will not recieve the message and
+    // eventually timeout the test
+    let mut msg = main_rx.recv().await.unwrap();
+
+    assert_eq!(msg, "After js future");
+}
+

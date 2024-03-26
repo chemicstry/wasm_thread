@@ -33,6 +33,14 @@ pub fn wasm_thread_entry_point(ptr: u32) {
     WorkerMessage::ThreadComplete.post();
 }
 
+#[wasm_bindgen]
+pub fn keep_worker_alive() -> bool {
+    #[cfg(feature = "keep_worker_alive")]
+    return true;
+    #[cfg(not(feature = "keep_worker_alive"))]
+    return false;
+}
+
 /// Used to relay spawn requests from web workers to main thread
 struct BuilderRequest {
     builder: Builder,
