@@ -9,6 +9,7 @@ use std::{
 
 use super::{signal::Signal, utils::is_web_worker_thread, Builder, JoinInner};
 
+
 /// A scope to spawn scoped threads in.
 ///
 /// See [`scope`] for details.
@@ -171,8 +172,11 @@ impl Builder {
         F: FnOnce() -> T + Send + 'scope,
         T: Send + 'scope,
     {
+        let thread_key = crate::wasm32::utils::create_available_thread_key();
+        let mut map = crate::wasm32::CAN_CLOSE_MAP.lock().unwrap();
+        map.insert(thread_key, true);
         Ok(ScopedJoinHandle(unsafe {
-            self.spawn_unchecked_(f, Some(scope.data.clone()))
+            self.spawn_unchecked_(f, Some(scope.data.clone()), thread_key)
         }?))
     }
 }

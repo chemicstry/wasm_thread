@@ -122,23 +122,34 @@ async fn thread_async_channel() {
     assert_eq!(result, "Hello world!");
 }
 
-
+// This test should fail if "keep_worker_alive" enabled
 #[wasm_bindgen_test]
 async fn keep_worker_alive(){
-    let (thread_tx, main_rx) = async_channel::unbounded::<String>();
-
     thread::spawn(|| {
         wasm_bindgen_futures::spawn_local(async move {
             let promise = js_sys::Promise::resolve(&wasm_bindgen::JsValue::from(42));
-            // Convert that promise into a future 
             let x = wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
-            // This should send if "keep_worker_alive" is enabled. If disabled, 
-            // the thread will close before the message can be sent
-            thread_tx.send("After js future".to_string()).await.unwrap();
+            //additional wait to simulate a js future that takes more time
+            async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+            // This should only run if "keep_worker_alive" is enabled. If disabled, 
+            // the thread will close before it can run
+            assert_eq!(1, 2);
         });
     });
-    // If "keep_worker_alive" is disabled this will not recieve the message and
-    // eventually timeout the test
+}
+
+#[wasm_bindgen_test]
+async fn spawn_async(){
+    let (thread_tx, main_rx) = async_channel::unbounded::<String>();
+    //since spawn_async closes the thread once the provided closure is complete,
+    //"keep_worker_alive" is not necessary
+    thread::spawn_async(|| async move{
+        let promise = js_sys::Promise::resolve(&wasm_bindgen::JsValue::from(42));
+        let x = wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+        //additional wait to simulate a js future that takes more time
+        async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+        thread_tx.send("After js future".to_string()).await.unwrap();
+    });
     let mut msg = main_rx.recv().await.unwrap();
 
     assert_eq!(msg, "After js future");

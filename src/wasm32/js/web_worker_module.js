@@ -1,11 +1,11 @@
 // synchronously, using the browser, import wasm_bindgen shim JS scripts
-import init, {wasm_thread_entry_point, keep_worker_alive} from "WASM_BINDGEN_SHIM_URL";
+import init, {wasm_thread_entry_point, keep_worker_alive, check_can_close} from "WASM_BINDGEN_SHIM_URL";
 
 // Wait for the main thread to send us the shared module/memory and work context.
 // Once we've got it, initialize it all with the `wasm_bindgen` global we imported via
 // `importScripts`.
 self.onmessage = event => {
-    let [ module, memory, work ] = event.data;
+    let [ module, memory, work, thread_key ] = event.data;
 
     init(module, memory).catch(err => {
         console.log(err);
@@ -21,10 +21,14 @@ self.onmessage = event => {
         // This executes closure defined by work context.
         wasm_thread_entry_point(work);
 
-        // Once done, check if worker should close
+        // Once done, check if worker should close based on the "keep_worker_alive" feature
         if(!keep_worker_alive()){
-            // terminate web worker
-            close();
+            // Periodically check if the thread can close
+            setInterval(()=>{
+                if(check_can_close(thread_key)){
+                    close();
+                }
+            }, 200);
         }
     });
 };

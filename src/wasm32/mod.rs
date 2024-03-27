@@ -16,10 +16,19 @@ use utils::SpinLockMutex;
 pub use utils::{available_parallelism, get_wasm_bindgen_shim_script_path, get_worker_script, is_web_worker_thread};
 use wasm_bindgen::prelude::*;
 use web_sys::{DedicatedWorkerGlobalScope, Worker, WorkerOptions, WorkerType};
+use std::future::Future;
+use std::pin::Pin;
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 
 mod scoped;
 mod signal;
 mod utils;
+
+// Use a thread safe static hashmap to keep track of whether each thread can be closed
+static CAN_CLOSE_MAP: Lazy<Mutex<HashMap<u32, bool>>> = Lazy::new(|| {
+    Mutex::new(HashMap::new())
+});
 
 struct WebWorkerContext {
     func: Box<dyn FnOnce() + Send>,
@@ -34,6 +43,16 @@ pub fn wasm_thread_entry_point(ptr: u32) {
 }
 
 #[wasm_bindgen]
+pub fn check_can_close(key: u32) -> bool {
+    let mut map = CAN_CLOSE_MAP.lock().unwrap();
+    let can_close = *map.get(&key).unwrap_or(&true);
+    if(can_close){
+        map.remove(&key);
+    }
+    can_close
+} 
+
+#[wasm_bindgen]
 pub fn keep_worker_alive() -> bool {
     #[cfg(feature = "keep_worker_alive")]
     return true;
@@ -45,11 +64,12 @@ pub fn keep_worker_alive() -> bool {
 struct BuilderRequest {
     builder: Builder,
     context: WebWorkerContext,
+    key: u32,
 }
 
 impl BuilderRequest {
     pub unsafe fn spawn(self) {
-        self.builder.spawn_for_context(self.context);
+        self.builder.spawn_for_context(self.context, self.key);
     }
 }
 
@@ -156,13 +176,13 @@ impl Builder {
 
     /// Spawns a new thread by taking ownership of the `Builder`, and returns an
     /// [std::io::Result] to its [`JoinHandle`].
-    pub fn spawn<F, T>(self, f: F) -> std::io::Result<JoinHandle<T>>
+    pub fn spawn<F, T>(self, f: F, key: u32) -> std::io::Result<JoinHandle<T>>
     where
         F: FnOnce() -> T,
         F: Send + 'static,
         T: Send + 'static,
     {
-        unsafe { self.spawn_unchecked(f) }
+        unsafe { self.spawn_unchecked(f, key) }
     }
 
     /// Spawns a new thread without any lifetime restrictions by taking ownership
@@ -179,19 +199,20 @@ impl Builder {
     /// - use only types with `'static` lifetime bounds, i.e., those with no or only
     /// `'static` references (both [`Builder::spawn`]
     /// and [`spawn`] enforce this property statically)
-    pub unsafe fn spawn_unchecked<'a, F, T>(self, f: F) -> std::io::Result<JoinHandle<T>>
+    pub unsafe fn spawn_unchecked<'a, F, T>(self, f: F, key: u32) -> std::io::Result<JoinHandle<T>>
     where
         F: FnOnce() -> T,
         F: Send + 'a,
         T: Send + 'a,
     {
-        Ok(JoinHandle(unsafe { self.spawn_unchecked_(f, None) }?))
+        Ok(JoinHandle(unsafe { self.spawn_unchecked_(f, None, key) }?))
     }
 
     pub(crate) unsafe fn spawn_unchecked_<'a, 'scope, F, T>(
         self,
         f: F,
         scope_data: Option<Arc<ScopeData>>,
+        key: u32,
     ) -> std::io::Result<JoinInner<'scope, T>>
     where
         F: FnOnce() -> T,
@@ -260,9 +281,9 @@ impl Builder {
         };
 
         if is_web_worker_thread() {
-            WorkerMessage::SpawnThread(BuilderRequest { builder: self, context }).post();
+            WorkerMessage::SpawnThread(BuilderRequest { builder: self, context, key }).post();
         } else {
-            self.spawn_for_context(context);
+            self.spawn_for_context(context, key);
         }
 
         if let Some(scope) = &my_packet.scope {
@@ -275,7 +296,7 @@ impl Builder {
         })
     }
 
-    unsafe fn spawn_for_context(self, ctx: WebWorkerContext) {
+    unsafe fn spawn_for_context(self, ctx: WebWorkerContext, key: u32) {
         let Builder {
             name,
             prefix,
@@ -345,6 +366,7 @@ impl Builder {
         init.push(&wasm_bindgen::module());
         init.push(&wasm_bindgen::memory());
         init.push(&JsValue::from(ctx_ptr as u32));
+        init.push(&JsValue::from(key));
 
         // Send initialization message
         match worker.post_message(&init) {
@@ -461,5 +483,51 @@ where
     F: Send + 'static,
     T: Send + 'static,
 {
-    Builder::new().spawn(f).expect("failed to spawn thread")
+    let thread_key = utils::create_available_thread_key();
+    let mut map = CAN_CLOSE_MAP.lock().unwrap();
+    //thread can close immediately
+    map.insert(thread_key, true);
+
+    spawn_with_key(f, thread_key).expect("failed to spawn thread")
+}
+
+trait AsyncClosure {
+    fn call_once(self) -> Pin<Box<dyn Future<Output = ()>>>;
+}
+
+impl<F, Fut> AsyncClosure for F
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + 'static,
+{
+    fn call_once(self) -> Pin<Box<dyn Future<Output = ()>>> {
+        Box::pin(self())
+    }
+}
+
+// JoinHandle is of type () because the future immediately returns.
+pub fn spawn_async<F>(f: F) -> JoinHandle<()>
+where
+    F: AsyncClosure,
+    F: Send + 'static,
+{
+    let thread_key = utils::create_available_thread_key();
+
+    spawn_with_key(move || {
+        wasm_bindgen_futures::spawn_local(async move {
+            f.call_once().await;
+            let mut map = CAN_CLOSE_MAP.lock().unwrap();
+            //thread closes after awaiting the future
+            map.insert(thread_key, true);
+        });
+    }, thread_key).expect("failed to spawn thread")
+}
+
+pub fn spawn_with_key<F, T>(f: F, key: u32) -> std::io::Result<JoinHandle<T>>
+where
+    F: FnOnce() -> T,
+    F: Send + 'static,
+    T: Send + 'static,
+{
+    Builder::new().spawn(f, key)
 }
