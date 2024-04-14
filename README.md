@@ -27,7 +27,7 @@ Note that some API is still missing and may be even impossible to implement give
 
 ## Alternatives
 
-For a higher-level threading solution, see [wasm-bindgen-rayon](https://github.com/GoogleChromeLabs/wasm-bindgen-rayon), which allows one to utilize a fixed-size threadpool in web browsers. 
+For a higher-level threading solution, see [wasm-bindgen-rayon](https://github.com/RReverser/wasm-bindgen-rayon), which allows one to utilize a fixed-size threadpool in web browsers. 
 
 ## Running examples
 
