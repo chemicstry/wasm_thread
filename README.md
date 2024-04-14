@@ -27,7 +27,7 @@ Note that some API is still missing and may be even impossible to implement give
 
 ## Alternatives
 
-For a higher-level threading solution, see [wasm-bindgen-rayon](https://github.com/GoogleChromeLabs/wasm-bindgen-rayon), which allows one to utilize a fixed-size threadpool in web browsers. 
+For a higher-level threading solution, see [wasm-bindgen-rayon](https://github.com/RReverser/wasm-bindgen-rayon), which allows one to utilize a fixed-size threadpool in web browsers.
 
 ## Running examples
 
@@ -40,26 +40,31 @@ For a higher-level threading solution, see [wasm-bindgen-rayon](https://github.c
 #### wasm-bindgen
 
 - Install nightly toolchain and dependencies:
+
 ```bash
 rustup toolchain install nightly
 rustup component add rust-src --toolchain nightly
 cargo install wasm-bindgen-cli
 ```
+
 - Build with `./build_wasm.sh` (bash) or `./build_wasm.ps1` (PowerShell). This custom build step is required because prebuilt standard library does not have support for atomics yet. Read more about this [here](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html).
 - Serve `examples` directory over HTTP with cross-origin isolation enabled and open `simple.html` in the browser. Inspect console output. You can use `cargo install sfz` as a basic HTTP server and serve with `sfz examples --coi`.
 
 #### wasm-pack
 
 - Install `wasm-pack`:
+
 ```bash
 cargo install wasm-pack
 ```
+
 - Build with `./examples-wasm-pack/web-build.sh` for an example targeting `web`, and `./examples-wasm-pack/web-build-no-module.sh` for an example targeting `no-modules`.
 - Serve `./examples-wasm-pack/module` or `./examples-wasm-pack/no-module`, respectively, over HTTP and open `simple.html` in browser. Inspect console output.
 
 ### Example output
 
 Native:
+
 ```
 hi number 1 from the spawned thread ThreadId(2)!
 hi number 1 from the main thread ThreadId(1)!
@@ -70,6 +75,7 @@ hi number 2 from the spawned thread ThreadId(3)!
 ```
 
 Wasm:
+
 ```
 hi number 1 from the main thread ThreadId(1)!
 hi number 2 from the main thread ThreadId(1)!
@@ -85,8 +91,8 @@ As you can see wasm threads are only spawned after `main()` returns, because bro
 
 Licensed under either of
 
- * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
 
