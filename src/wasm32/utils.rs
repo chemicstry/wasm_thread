@@ -5,7 +5,7 @@ use std::{
 };
 
 use wasm_bindgen::prelude::*;
-use web_sys::{Blob, Url, WorkerGlobalScope};
+use web_sys::{Blob, DedicatedWorkerGlobalScope, Url, WorkerGlobalScope};
 
 pub fn available_parallelism() -> io::Result<NonZeroUsize> {
     if let Some(window) = web_sys::window() {
