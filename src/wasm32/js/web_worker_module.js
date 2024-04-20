@@ -21,7 +21,9 @@ self.onmessage = event => {
         // This executes closure defined by work context.
         wasm_thread_entry_point(work);
 
-        // Once done, terminate web worker
-        close();
+        if (!wasm.keep_worker_alive()) {
+            // Once done, terminate web worker
+            close();
+        }
     });
 };

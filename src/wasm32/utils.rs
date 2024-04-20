@@ -26,6 +26,14 @@ pub fn is_web_worker_thread() -> bool {
     js_sys::eval("self").unwrap().dyn_into::<WorkerGlobalScope>().is_ok()
 }
 
+pub fn close_current_web_worker() {
+    js_sys::eval("self")
+        .unwrap()
+        .dyn_into::<DedicatedWorkerGlobalScope>()
+        .unwrap()
+        .close();
+}
+
 #[cfg(feature = "es_modules")]
 #[wasm_bindgen(module = "/src/wasm32/js/module_workers_polyfill.min.js")]
 extern "C" {
