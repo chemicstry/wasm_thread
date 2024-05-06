@@ -6,7 +6,6 @@ use std::{
 
 use wasm_bindgen::prelude::*;
 use web_sys::{Blob, Url, WorkerGlobalScope};
-use crate::wasm32::CAN_CLOSE_MAP;
 
 pub fn available_parallelism() -> io::Result<NonZeroUsize> {
     if let Some(window) = web_sys::window() {
@@ -105,18 +104,3 @@ impl<T> SpinLockMutex for Mutex<T> {
     }
 }
 
-pub fn create_available_thread_key() -> u32 {
-    let mut thread_key: Option<u32> = None;
-
-    let mut map = CAN_CLOSE_MAP.lock().unwrap();
-
-    for key in 0..=std::u32::MAX {
-        if !map.contains_key(&key) {
-            map.insert(key, false);
-            thread_key = Some(key);
-            break;
-        }
-    }
-
-    thread_key.expect("Unable to generate unique thread key")
-}

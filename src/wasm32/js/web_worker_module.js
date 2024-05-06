@@ -1,5 +1,5 @@
 // synchronously, using the browser, import wasm_bindgen shim JS scripts
-import init, {wasm_thread_entry_point, keep_worker_alive, check_can_close} from "WASM_BINDGEN_SHIM_URL";
+import init, {wasm_thread_entry_point} from "WASM_BINDGEN_SHIM_URL";
 
 // Wait for the main thread to send us the shared module/memory and work context.
 // Once we've got it, initialize it all with the `wasm_bindgen` global we imported via
@@ -20,15 +20,5 @@ self.onmessage = event => {
         // Enter rust code by calling entry point defined in `lib.rs`.
         // This executes closure defined by work context.
         wasm_thread_entry_point(work);
-
-        // Once done, check if worker should close based on the "keep_worker_alive" feature
-        if(!keep_worker_alive()){
-            // Periodically check if the thread can close
-            setInterval(()=>{
-                if(check_can_close(thread_key)){
-                    close();
-                }
-            }, 200);
-        }
     });
 };

@@ -20,16 +20,6 @@ self.onmessage = event => {
         // Enter rust code by calling entry point defined in `lib.rs`.
         // This executes closure defined by work context.
         wasm.wasm_thread_entry_point(work);
-
-       // Once done, check if worker should close based on the "keep_worker_alive" feature
-       if(!wasm.keep_worker_alive()){
-            // Periodically check if the thread can close
-            setInterval(()=>{
-                if(wasm.check_can_close(thread_key)){
-                    close();
-                }
-            }, 200);
-        }
     });
 };
   

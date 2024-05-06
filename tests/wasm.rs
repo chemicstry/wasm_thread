@@ -1,8 +1,12 @@
 #![cfg(target_arch = "wasm32")]
 
 use core::{
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
+    sync::atomic::{AtomicBool, Ordering}, time::Duration
+};
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 use wasm_bindgen_test::*;
@@ -122,13 +126,14 @@ async fn thread_async_channel() {
     assert_eq!(result, "Hello world!");
 }
 
+//TODO: doesn't fail when keep_worker_alive is enabled. Can threads be closed from wasm?
 // This test should fail if "keep_worker_alive" enabled
 #[wasm_bindgen_test]
 async fn keep_worker_alive(){
     thread::spawn(|| {
         wasm_bindgen_futures::spawn_local(async move {
             let promise = js_sys::Promise::resolve(&wasm_bindgen::JsValue::from(42));
-            let x = wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+            wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
             //additional wait to simulate a js future that takes more time
             async_std::task::sleep(std::time::Duration::from_secs(1)).await;
             // This should only run if "keep_worker_alive" is enabled. If disabled, 
@@ -144,14 +149,53 @@ async fn spawn_async(){
     //since spawn_async closes the thread once the provided closure is complete,
     //"keep_worker_alive" is not necessary
     thread::spawn_async(|| async move{
+
         let promise = js_sys::Promise::resolve(&wasm_bindgen::JsValue::from(42));
-        let x = wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
-        //additional wait to simulate a js future that takes more time
+        wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+        // //additional wait to simulate a js future that takes more time
         async_std::task::sleep(std::time::Duration::from_secs(1)).await;
         thread_tx.send("After js future".to_string()).await.unwrap();
     });
-    let mut msg = main_rx.recv().await.unwrap();
+    let msg = main_rx.recv().await.unwrap();
 
     assert_eq!(msg, "After js future");
+}
+
+struct DelayedValue {
+    start_time: f64,
+    delay_time: f64,
+}
+
+impl Future for DelayedValue {
+    type Output = u32;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Check if the delay has elapsed
+        let performance_now = js_sys::Date::now();
+        if self.start_time+self.delay_time < performance_now {
+            Poll::Ready(1234)
+        } else {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+
+    }
+}
+
+impl DelayedValue {
+    pub fn new(duration: f64) -> Self {
+        let performance_now = js_sys::Date::now();
+        DelayedValue {start_time: performance_now, delay_time: duration}
+    }
+}
+
+#[wasm_bindgen_test]
+async fn async_thread_join_async() {
+    
+    let handle = thread::spawn_async(|| async move { 
+        DelayedValue::new(1000.0).await
+    });
+
+    assert_eq!(handle.join_async().await.unwrap(), 1234);
 }
 
