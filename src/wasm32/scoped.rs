@@ -9,6 +9,7 @@ use std::{
 
 use super::{signal::Signal, utils::is_web_worker_thread, Builder, JoinInner};
 
+
 /// A scope to spawn scoped threads in.
 ///
 /// See [`scope`] for details.

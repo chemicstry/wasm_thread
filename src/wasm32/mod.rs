@@ -1,4 +1,4 @@
-pub use std::thread::{current, sleep, Result, Thread, ThreadId};
+pub use std::thread::{Result, Thread};
 use std::{
     cell::UnsafeCell,
     fmt,
@@ -16,10 +16,16 @@ use utils::SpinLockMutex;
 pub use utils::{available_parallelism, get_wasm_bindgen_shim_script_path, get_worker_script, is_web_worker_thread};
 use wasm_bindgen::prelude::*;
 use web_sys::{DedicatedWorkerGlobalScope, Worker, WorkerOptions, WorkerType};
+use std::future::Future;
+use std::pin::Pin;
+
 
 mod scoped;
 mod signal;
 mod utils;
+
+// Use a thread safe static hashmap to keep track of whether each thread can be closed
+
 
 struct WebWorkerContext {
     func: Box<dyn FnOnce() + Send>,
@@ -63,6 +69,30 @@ impl WorkerMessage {
             .unwrap()
             .post_message(&JsValue::from(Box::into_raw(req) as u32))
             .unwrap();
+    }
+}
+
+// Pass `f` in `MaybeUninit` because actually that closure might *run longer than the lifetime of `F`*.
+// See <https://github.com/rust-lang/rust/issues/101983> for more details.
+// To prevent leaks we use a wrapper that drops its contents.
+#[repr(transparent)]
+struct MaybeDangling<T>(mem::MaybeUninit<T>);
+impl<T> MaybeDangling<T> {
+    fn new(x: T) -> Self {
+        MaybeDangling(mem::MaybeUninit::new(x))
+    }
+    fn into_inner(self) -> T {
+        // SAFETY: we are always initiailized.
+        let ret = unsafe { self.0.assume_init_read() };
+        // Make sure we don't drop.
+        mem::forget(self);
+        ret
+    }
+}
+impl<T> Drop for MaybeDangling<T> {
+    fn drop(&mut self) {
+        // SAFETY: we are always initiailized.
+        unsafe { self.0.assume_init_drop() };
     }
 }
 
@@ -148,6 +178,7 @@ impl Builder {
 
     /// Spawns a new thread by taking ownership of the `Builder`, and returns an
     /// [std::io::Result] to its [`JoinHandle`].
+    
     pub fn spawn<F, T>(self, f: F) -> std::io::Result<JoinHandle<T>>
     where
         F: FnOnce() -> T,
@@ -155,6 +186,14 @@ impl Builder {
         T: Send + 'static,
     {
         unsafe { self.spawn_unchecked(f) }
+    }
+
+    pub fn spawn_async<F, T>(self, f: F) -> std::io::Result<JoinHandle<T>>
+    where
+        F: AsyncClosure<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        unsafe { self.spawn_unchecked_async(f) }
     }
 
     /// Spawns a new thread without any lifetime restrictions by taking ownership
@@ -180,6 +219,14 @@ impl Builder {
         Ok(JoinHandle(unsafe { self.spawn_unchecked_(f, None) }?))
     }
 
+    pub unsafe fn spawn_unchecked_async<'a, F, T>(self, f: F) -> std::io::Result<JoinHandle<T>>
+    where
+        F: AsyncClosure<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        Ok(JoinHandle(unsafe { self.spawn_unchecked_async_(f, None) }?))
+    }
+    
     pub(crate) unsafe fn spawn_unchecked_<'a, 'scope, F, T>(
         self,
         f: F,
@@ -201,30 +248,6 @@ impl Builder {
         });
         let their_packet = my_packet.clone();
 
-        // Pass `f` in `MaybeUninit` because actually that closure might *run longer than the lifetime of `F`*.
-        // See <https://github.com/rust-lang/rust/issues/101983> for more details.
-        // To prevent leaks we use a wrapper that drops its contents.
-        #[repr(transparent)]
-        struct MaybeDangling<T>(mem::MaybeUninit<T>);
-        impl<T> MaybeDangling<T> {
-            fn new(x: T) -> Self {
-                MaybeDangling(mem::MaybeUninit::new(x))
-            }
-            fn into_inner(self) -> T {
-                // SAFETY: we are always initiailized.
-                let ret = unsafe { self.0.assume_init_read() };
-                // Make sure we don't drop.
-                mem::forget(self);
-                ret
-            }
-        }
-        impl<T> Drop for MaybeDangling<T> {
-            fn drop(&mut self) {
-                // SAFETY: we are always initiailized.
-                unsafe { self.0.assume_init_drop() };
-            }
-        }
-
         let f = MaybeDangling::new(f);
         let main = Box::new(move || {
             // SAFETY: we constructed `f` initialized.
@@ -242,9 +265,85 @@ impl Builder {
             drop(their_packet);
             // Notify waiting handles
             their_signal.signal();
-            // Here, the lifetime `'a` and even `'scope` can end. `main` keeps running for a bit
+            // Here, the lifetime `'a` and even `'scope` can end, so the thread can be closed. `main` keeps running for a bit
             // after that before returning itself.
+            #[cfg(not(feature = "keep_worker_alive"))]
+            js_sys::eval("self")
+                .unwrap()
+                .dyn_into::<DedicatedWorkerGlobalScope>()
+                .unwrap()
+                .close();
         });
+
+        // Erase lifetime
+        let context = WebWorkerContext {
+            func: mem::transmute::<Box<dyn FnOnce() + Send + 'a>, Box<dyn FnOnce() + Send + 'static>>(main),
+        };
+
+        if is_web_worker_thread() {
+            WorkerMessage::SpawnThread(BuilderRequest { builder: self, context }).post();
+        } else {
+            self.spawn_for_context(context);
+        }
+
+        if let Some(scope) = &my_packet.scope {
+            scope.increment_num_running_threads();
+        }
+
+        Ok(JoinInner {
+            signal: my_signal,
+            packet: my_packet,
+        })
+    }
+
+    pub(crate) unsafe fn spawn_unchecked_async_<'a, F, T>(
+        self,
+        f: F,
+        scope_data: Option<Arc<ScopeData>>,
+    ) -> std::io::Result<JoinInner<'static, T>>
+    where
+        F: AsyncClosure<T> + 'static,
+        T: Send + 'static,
+    {
+        let my_signal = Arc::new(Signal::new());
+        let their_signal = my_signal.clone();
+
+        let my_packet: Arc<Packet<'static, T>> = Arc::new(Packet {
+            scope: scope_data,
+            result: UnsafeCell::new(None),
+            _marker: PhantomData,
+        });
+        let their_packet = my_packet.clone();
+
+        let f = MaybeDangling::new(f);
+        let spawn_local = wasm_bindgen_futures::spawn_local(async move {
+            // SAFETY: we constructed `f` initialized.
+            let f = f.into_inner();
+            // Execute the closure and catch any panics
+            
+            let try_result = Ok(f.call_once().await);
+
+            // SAFETY: `their_packet` as been built just above and moved by the
+            // closure (it is an Arc<...>) and `my_packet` will be stored in the
+            // same `JoinInner` as this closure meaning the mutation will be
+            // safe (not modify it and affect a value far away).
+            unsafe { *their_packet.result.get() = Some(try_result) };
+            // Here `their_packet` gets dropped, and if this is the last `Arc` for that packet that
+            // will call `decrement_num_running_threads` and therefore signal that this thread is
+            // done.
+            drop(their_packet);
+            // Notify waiting handles
+            their_signal.signal();
+            // Here, the lifetime `'a` and even `'scope` can end, so the thread can be closed. `main` keeps running for a bit
+            // after that before returning itself.
+            #[cfg(not(feature = "keep_worker_alive"))]
+            js_sys::eval("self")
+                .unwrap()
+                .dyn_into::<DedicatedWorkerGlobalScope>()
+                .unwrap()
+                .close();
+        });
+        let main = Box::new(move || spawn_local );
 
         // Erase lifetime
         let context = WebWorkerContext {
@@ -453,5 +552,30 @@ where
     F: Send + 'static,
     T: Send + 'static,
 {
-    Builder::new().spawn(f).expect("failed to spawn thread")
+    Builder::new().spawn(f).expect("Failed to spawn thread")
+}
+
+pub trait AsyncClosure<T> {
+    fn call_once(self) -> Pin<Box<dyn Future<Output = T>>>;
+}
+
+impl<F, Fut, T> AsyncClosure<T> for F
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = T> + 'static,
+    T: Send + 'static,
+{
+    fn call_once(self) -> Pin<Box<dyn Future<Output = T>>> {
+        Box::pin(self())
+    }
+}
+
+// JoinHandle is of type () because the future immediately returns.
+pub fn spawn_async<F, T>(f: F) -> JoinHandle<T>
+where
+    F: AsyncClosure<T>,
+    F: Send + 'static,
+    T: Send + 'static,
+{
+    Builder::new().spawn_async(f).expect("failed to spawn thread")
 }
