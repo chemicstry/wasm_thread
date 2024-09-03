@@ -26,7 +26,7 @@ pub fn is_web_worker_thread() -> bool {
     js_sys::eval("self").unwrap().dyn_into::<WorkerGlobalScope>().is_ok()
 }
 
-#[cfg(feature = "es_modules")]
+#[cfg(all(feature = "es_modules", feature = "module_workers_polyfill"))]
 #[wasm_bindgen(module = "/src/wasm32/js/module_workers_polyfill.min.js")]
 extern "C" {
     pub fn load_module_workers_polyfill();

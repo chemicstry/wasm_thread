@@ -13,7 +13,8 @@ categories = ["concurrency", "wasm"]
 readme = "README.md"
 
 [features]
-default = ["es_modules"]
+default = ["es_modules", "module_workers_polyfill"]
+module_workers_polyfill = []
 es_modules = []
 
 [dependencies]
