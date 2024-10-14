@@ -297,7 +297,7 @@ impl Builder {
 
         #[cfg(feature = "es_modules")]
         {
-            utils::load_module_workers_polyfill();
+            js_sys::eval(include_str!("js/module_workers_polyfill.min.js")).unwrap();
             options.type_(WorkerType::Module);
         }
         #[cfg(not(feature = "es_modules"))]
