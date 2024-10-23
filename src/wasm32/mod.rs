@@ -1,4 +1,3 @@
-pub use std::thread::{current, sleep, Result, Thread, ThreadId};
 use std::{
     cell::UnsafeCell,
     fmt,
@@ -7,6 +6,7 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     rc::Rc,
     sync::{Arc, Mutex},
+    thread::{Result, Thread},
 };
 
 use scoped::ScopeData;
@@ -280,17 +280,17 @@ impl Builder {
         let script = worker_script_url.unwrap_or(get_worker_script(wasm_bindgen_shim_url));
 
         // Todo: figure out how to set stack size
-        let mut options = WorkerOptions::new();
+        let options = WorkerOptions::new();
         match (name, prefix) {
             (Some(name), Some(prefix)) => {
-                options.name(&format!("{}:{}", prefix, name));
+                options.set_name(&format!("{}:{}", prefix, name));
             }
             (Some(name), None) => {
-                options.name(&name);
+                options.set_name(&name);
             }
             (None, Some(prefix)) => {
                 let random = (js_sys::Math::random() * 10e10) as u64;
-                options.name(&format!("{}:{}", prefix, random));
+                options.set_name(&format!("{}:{}", prefix, random));
             }
             (None, None) => {}
         };
@@ -298,11 +298,11 @@ impl Builder {
         #[cfg(feature = "es_modules")]
         {
             js_sys::eval(include_str!("js/module_workers_polyfill.min.js")).unwrap();
-            options.type_(WorkerType::Module);
+            options.set_type(WorkerType::Module);
         }
         #[cfg(not(feature = "es_modules"))]
         {
-            options.type_(WorkerType::Classic);
+            options.set_type(WorkerType::Classic);
         }
 
         // Spawn the worker
