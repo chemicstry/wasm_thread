@@ -7,7 +7,7 @@ import init, {wasm_thread_entry_point} from "WASM_BINDGEN_SHIM_URL";
 self.onmessage = event => {
     let [ module, memory, work ] = event.data;
 
-    init(module, memory).catch(err => {
+    init({ module_or_path: module, memory }).catch(err => {
         console.log(err);
 
         // Propagate to main `onerror`:
