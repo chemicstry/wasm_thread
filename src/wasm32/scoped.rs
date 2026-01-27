@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use super::{signal::Signal, utils::is_web_worker_thread, Builder, JoinInner};
+use super::{signal::Signal, utils::is_main_thread, Builder, JoinInner};
 
 /// A scope to spawn scoped threads in.
 ///
@@ -89,7 +89,7 @@ where
     F: for<'scope> FnOnce(&'scope Scope<'scope, 'env>) -> T,
 {
     // Fail early to avoid flaky panics that depend on execution time
-    if !is_web_worker_thread() {
+    if is_main_thread() {
         panic!("scope is not allowed on the main thread");
     }
 

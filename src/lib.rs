@@ -1,3 +1,4 @@
+#![feature(thread_id_value)]
 #![cfg_attr(target_arch = "wasm32", feature(stdarch_wasm_atomic_wait))]
 
 // Import reusable APIs from std
