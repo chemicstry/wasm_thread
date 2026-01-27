@@ -51,8 +51,10 @@ pub fn get_worker_script(wasm_bindgen_shim_url: Option<String>) -> String {
     // Generate script from template
     #[cfg(feature = "es_modules")]
     let template = include_str!("js/web_worker_module.js");
-    #[cfg(not(feature = "es_modules"))]
+    #[cfg(all(not(feature = "es_modules"), not(feature = "wasm_sync_init")))]
     let template = include_str!("js/web_worker.js");
+    #[cfg(feature = "wasm_sync_init")]
+    let template = include_str!("js/web_worker.sync.js");
 
     let script = template.replace("WASM_BINDGEN_SHIM_URL", &wasm_bindgen_shim_url);
 

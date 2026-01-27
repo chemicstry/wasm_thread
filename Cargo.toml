@@ -15,20 +15,21 @@ readme = "README.md"
 [features]
 default = ["es_modules"]
 es_modules = []
+wasm_sync_init = []
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.95"
 web-sys = { version = "0.3.72", features = [
-    "Blob",
-    "DedicatedWorkerGlobalScope",
-    "MessageEvent",
-    "Url",
-    "Worker",
-    "WorkerType",
-    "WorkerOptions",
-    "Window",
-    "Navigator",
-    "WorkerNavigator",
+  "Blob",
+  "DedicatedWorkerGlobalScope",
+  "MessageEvent",
+  "Url",
+  "Worker",
+  "WorkerType",
+  "WorkerOptions",
+  "Window",
+  "Navigator",
+  "WorkerNavigator",
 ] }
 js-sys = "0.3.72"
 futures = "0.3.31"
