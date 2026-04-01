@@ -1,13 +1,13 @@
 // synchronously, using the browser, import wasm_bindgen shim JS scripts
-import init, {wasm_thread_entry_point} from "WASM_BINDGEN_SHIM_URL";
+import init, { wasm_thread_entry_point } from "WASM_BINDGEN_SHIM_URL";
 
 // Wait for the main thread to send us the shared module/memory and work context.
 // Once we've got it, initialize it all with the `wasm_bindgen` global we imported via
 // `importScripts`.
 self.onmessage = event => {
-    let [ module, memory, work ] = event.data;
+    const [module_or_path, memory, work] = event.data;
 
-    init(module, memory).catch(err => {
+    init({ module_or_path, memory }).catch(err => {
         console.log(err);
 
         // Propagate to main `onerror`:
